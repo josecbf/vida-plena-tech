@@ -11,7 +11,7 @@ A **Plataforma-Igrejas** é um produto SaaS modular para gestão eclesiástica �
 
 **Norte do produto:** ajudar igrejas a operar com excelência sem perder o cuidado pastoral. Tecnologia a serviço da missão.
 
-Este repositório contém **exclusivamente documentação e planejamento de produto**. Não há código aqui. O vault foi criado no Obsidian — mas todo agente de IA deve conseguir lê-lo e editá-lo via ferramentas de arquivo padrão.
+Este repositório contém **exclusivamente documentação e planejamento de produto**. Não há código aqui. Todos os arquivos são Markdown padrão e devem ser lidos e editados via ferramentas de arquivo comuns.
 
 ---
 
@@ -33,7 +33,7 @@ Antes de qualquer trabalho, ler:
 
 ---
 
-## Estrutura do vault
+## Estrutura do repositório
 
 ```
 000 - Hub.md              ← ponto de entrada; leia sempre que precisar se orientar
@@ -67,7 +67,7 @@ Antes de propor qualquer modelagem de entidade em um módulo, verificar se ela j
 
 ---
 
-## Padrão de escrita para este vault
+## Padrão de escrita
 
 ### Tom e linguagem
 
@@ -146,7 +146,7 @@ Antes de abrir o PR e fechar a issue, verificar:
 
 - [ ] O documento criado ou editado tem todas as seções esperadas para seu tipo
 - [ ] Nenhuma entidade foi criada sem verificar o modelo canônico em `Técnico/`
-- [ ] Links internos (wikilinks `[[...]]`) apontam para arquivos que existem
+- [ ] Links internos usam markdown padrão `[texto](caminho/arquivo.md)` e apontam para arquivos que existem
 - [ ] Nenhuma decisão de escopo foi tomada silenciosamente — tudo está no comentário de conclusão
 - [ ] O documento é legível por alguém sem contexto da conversa que originou a task
 - [ ] Os critérios de aceitação da issue foram verificados um a um
