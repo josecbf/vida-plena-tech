@@ -8,7 +8,7 @@ Plataforma SaaS inspirada no modelo do Planning Center: um núcleo comum de pess
 
 **Norte do produto:** ajudar igrejas a operar com excelência sem perder o cuidado pastoral.
 
-## Estrutura do vault
+## Estrutura do repositório
 
 | Pasta | Conteúdo |
 |---|---|
@@ -41,6 +41,10 @@ Plataforma SaaS inspirada no modelo do Planning Center: um núcleo comum de pess
 
 ## Como usar este repositório
 
-Este repo contém exclusivamente documentação e planejamento de produto. O vault foi criado no [Obsidian](https://obsidian.md/) — recomendamos abrir com o Obsidian para melhor navegação entre os arquivos.
+Este repo contém exclusivamente documentação e planejamento de produto em Markdown padrão.
+
+Para colaborar, leia primeiro:
+- [`COLLABORATION.md`](COLLABORATION.md) — protocolo de trabalho para todos os colaboradores e agentes
+- [`AI-INSTRUCTIONS.md`](AI-INSTRUCTIONS.md) — guia específico para agentes de IA
 
 > Repositório privado. Acesso restrito à equipe do projeto.
