@@ -37,6 +37,7 @@ Na Plataforma-Igrejas, Ensino não é um sistema isolado. Ele depende do módulo
 | Nota | Descrição |
 |------|-----------|
 | [[PRD Ensino]] | Documento mestre do módulo |
+| [[Roadmap Ensino]] | Fases de entrega do MVP à expansão |
 | [[Arquitetura Funcional Ensino]] | Áreas, fluxos e capacidades funcionais |
 | [[Sitemap e Mapa de Telas Ensino]] | Telas, navegação e experiência |
 | [[Backlog Inicial Ensino]] | Épicos e histórias iniciais |
@@ -57,8 +58,9 @@ Na Plataforma-Igrejas, Ensino não é um sistema isolado. Ele depende do módulo
 
 | Dimensão | Status |
 |----------|--------|
-| Estratégia | Base forte herdada do vault Ensino, adaptada para plataforma modular |
+| Estratégia | Consolidado |
 | PRD | Rascunho estruturado |
+| Roadmap | Pronto |
 | Arquitetura funcional | Rascunho estruturado |
 | Sitemap | Rascunho estruturado |
 | Permissões | Rascunho estruturado |
