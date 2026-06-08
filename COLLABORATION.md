@@ -191,7 +191,7 @@ Antes de editar qualquer arquivo abaixo, verificar se há branch aberta de outro
 
 | Arquivo / Pasta | Motivo |
 |---|---|
-| `000 - Hub.md` | Ponto de entrada do vault — afeta a navegação de todos |
+| `000 - Hub.md` | Ponto de entrada — afeta a navegação de todos |
 | `PRELIMINARES/` | Visão e princípios — mudanças têm impacto transversal |
 | `Técnico/` | Contratos centrais do sistema |
 | `Produto/` | Estrutura e roadmap do produto |
@@ -206,4 +206,4 @@ Antes de editar qualquer arquivo abaixo, verificar se há branch aberta de outro
 - `.env` e qualquer arquivo de segredos ou credenciais
 - Arquivos temporários (`*.tmp`, `*.bak`, `~*`)
 - Exports, dumps e artefatos de ferramentas locais
-- Arquivos de configuração pessoal de editor (exceto `.obsidian/` versionado intencionalmente)
+- Arquivos de configuração pessoal de editor
