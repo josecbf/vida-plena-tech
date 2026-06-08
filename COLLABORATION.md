@@ -9,9 +9,9 @@ Define fluxo de trabalho, padrões de tasks, regras de git e coordenação entre
 
 | Ator | Instruções específicas | Branch prefix |
 |---|---|---|
-| Marcos (owner/PO) | — | `marcos/` |
+| Agente Humano (owner/PO) | — | `human/` |
 | Terceiro (colaborador externo) | `AGENTS.md` | `ext/` |
-| Claude Code (Anthropic) | `CLAUDE.md` | `claude/` |
+| Agentes de IA | `AI-INSTRUCTIONS.md` | `ai/` |
 | Agentes do terceiro | `AGENTS.md` | `ext/` |
 
 ---
@@ -25,7 +25,7 @@ git status                  # verificar estado local
 git pull --ff-only          # atualizar com o remoto sem merge automático
 ```
 
-Se `git pull --ff-only` falhar (divergência), **parar e avisar o Marcos** antes de continuar.
+Se `git pull --ff-only` falhar (divergência), **parar e avisar o Agente Humano** antes de continuar.
 
 ---
 
@@ -101,12 +101,12 @@ Decisões anteriores relevantes, links, benchmarks, restrições conhecidas.
 
 - Cada issue gera uma branch própria com o prefixo do ator responsável:
   ```
-  claude/issue-42-modelo-dados-pessoas
+  ai/issue-42-modelo-dados-pessoas
   ext/issue-17-jornada-onboarding
-  marcos/issue-8-revisao-preliminares
+  human/issue-8-revisao-preliminares
   ```
 - Commits pequenos e descritivos em português
-- **O merge no `main` é sempre decisão do Marcos**
+- **O merge no `main` é sempre decisão do Agente Humano**
 - Nunca fazer force push em `main`
 - Branch é deletada após merge
 
@@ -129,7 +129,7 @@ Issue aberta → Corpo completo verificado → Branch criada → Em andamento �
 **Ao concluir (task pronta para merge):**
 1. Abrir PR da branch para `main` com `Closes #NNN` na descrição
 2. Fechar a issue com comentário detalhado de conclusão (ver padrão abaixo)
-3. Sinalizar ao Marcos para revisão e merge
+3. Sinalizar ao Agente Humano para revisão e merge
 
 **Ao adiar (task pausada por decisão):**
 1. Aplicar label `adiado`: `gh issue edit <número> --add-label "adiado"`
@@ -169,13 +169,13 @@ documentar aqui com justificativa. Se nenhuma decisão relevante, escrever "Nenh
 - [x] Critério 3 — como foi verificado
 
 **Pontos de atenção para revisão:**
-O que o Marcos deve checar com atenção. Dúvidas abertas, decisões que precisam de validação,
+O que o Agente Humano deve checar com atenção. Dúvidas abertas, decisões que precisam de validação,
 dependências criadas. Se não houver nada especial, escrever "Nenhum."
 
 **PR:** #NNN
 ```
 
-> Comentários de conclusão rasos ou genéricos não são aceitáveis. O objetivo é que o Marcos possa revisar o PR com plena compreensão do que foi feito e por quê, sem precisar perguntar.
+> Comentários de conclusão rasos ou genéricos não são aceitáveis. O objetivo é que o Agente Humano possa revisar o PR com plena compreensão do que foi feito e por quê, sem precisar perguntar.
 
 ---
 
@@ -196,7 +196,7 @@ Antes de editar qualquer arquivo abaixo, verificar se há branch aberta de outro
 | `Técnico/` | Contratos centrais do sistema |
 | `Produto/` | Estrutura e roadmap do produto |
 | `COLLABORATION.md` | Este arquivo |
-| `CLAUDE.md` | Instruções do Claude Code |
+| `AI-INSTRUCTIONS.md` | Instruções para agentes de IA |
 | `AGENTS.md` | Instruções dos agentes externos |
 
 ---
