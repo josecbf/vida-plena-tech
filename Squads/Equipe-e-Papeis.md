@@ -22,7 +22,7 @@ A equipe ideal reúne pessoas que dominam sua área técnica **e** entendem — 
 
 ## Papéis centrais
 
-### Product Owner — Marcos Amorim
+### Product Owner — Agente Humano
 Dono do produto, visão estratégica e decisão final sobre escopo, prioridade e merge.
 
 Responsabilidades:
