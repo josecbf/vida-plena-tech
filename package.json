@@ -1,0 +1,19 @@
+{
+  "name": "videira",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Plataforma Videira — monorepo (docs + apps + packages + agents)",
+  "packageManager": "pnpm@10.32.1",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
