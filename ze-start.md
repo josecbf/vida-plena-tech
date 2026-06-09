@@ -74,26 +74,28 @@ videira/  (este repo)
 - [x] Ajustar referências em `COLLABORATION.md` / `README.md`
 - [x] Commit na branch `ze-start` (`e84840a`)
 
-### Fase 1 — Identidade + design system · ~3–5h
-- [ ] Tokens de cor/tipografia (`packages/ui`)
-- [ ] Tema Tailwind + shadcn/ui + componentes base
-- [ ] Logo SVG + favicon
-- [ ] Página `/brand` na demo + doc de marca
+### Fase 1 — Identidade + design system · ~3–5h ✅
+- [x] Tokens de cor/tipografia (`packages/ui`)
+- [x] Tema Tailwind (v4) + componentes base (`apps/demo/components/ui.tsx`)
+- [x] Logo (ícone videira/uva) — favicon pendente (opcional)
+- [x] Página `/brand` na demo
 
 ### Fase 2 — Agentes de IA (Squads) · ~2–3h ✅
 - [x] `agents/` com 1 arquivo por papel (10 papéis)
 - [x] Definições executáveis em `.claude/agents/`
 - [x] README explicando como acionar cada agente
 
-### Fase 3 — Demo Pessoas + Ensino · ~8–12h
-- [ ] `apps/demo` Next.js + shell + navegação multi-módulo
-- [ ] Mock data (`packages/types` + seed JSON)
-- [ ] Telas Pessoas (lista, perfil, famílias, timeline)
-- [ ] Telas Ensino (trilhas, curso, progresso)
+### Fase 3 — Demo Pessoas + Ensino · ~8–12h ✅
+- [x] `apps/demo` Next.js + shell + navegação multi-módulo
+- [x] Mock data (`packages/types`)
+- [x] Telas Pessoas (lista, perfil, famílias, timeline)
+- [x] Telas Ensino (trilhas, curso, progresso)
+- [x] Build de produção valida (22 páginas, 0 erros)
 
 ### Fase 4 — Deploy + polish · ~1–2h
-- [ ] Deploy na Vercel + responsividade
-- [ ] README com link da demo
+- [x] README com instruções de deploy (`apps/demo/README.md`)
+- [ ] Deploy na Vercel (passo manual do dono — Root Directory = `apps/demo`)
+- [ ] Favicon + polish de responsividade fino
 
 **Total estimado: ~15–24h**, faseável em PRs independentes.
 

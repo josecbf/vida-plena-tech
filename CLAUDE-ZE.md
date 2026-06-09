@@ -35,21 +35,30 @@ Contexto de produto completo está em `docs/` (após a reorg) — comece por `do
 
 ## Estado atual
 
-**Fase 0 ✅ e Fase 2 ✅ concluídas. Próximo: Fase 1 (identidade/design system) + Fase 3 (demo).**
+**Fases 0, 1, 2 e 3 ✅ concluídas. A demo builda. Falta só o deploy manual na Vercel (Fase 4).**
 
 ### Feito até agora
-- Branch `ze-start` criada.
-- `ze-start.md` (plano + todo) e `CLAUDE-ZE.md` (handoff) criados.
-- **Fase 0:** doc movida para `docs/` (histórico preservado), monorepo configurado (pnpm workspaces + Turborepo: `package.json`, `pnpm-workspace.yaml`, `turbo.json`), `.gitignore` atualizado, README/COLLABORATION ajustados. Commit `e84840a`.
-- **Fase 2:** 10 agentes canônicos em `agents/` + 10 definições executáveis em `.claude/agents/` + `agents/README.md` com modelo recomendado por papel.
+- Branch `ze-start` criada; `ze-start.md` (plano + todo) e `CLAUDE-ZE.md` (handoff).
+- **Fase 0:** doc movida para `docs/` (histórico preservado), monorepo (pnpm workspaces + Turborepo). Commit `e84840a`.
+- **Fase 2:** 10 agentes em `agents/` + `.claude/agents/`. Commit `e4fb42b`.
+- **Fase 1:** `packages/ui` (tokens Videira + `cn`), tema Tailwind v4, componentes base (`apps/demo/components/ui.tsx`), página `/brand`. Logo = ícone de uva/videira (lucide `Grape`).
+- **Fase 3:** `apps/demo` (Next.js 15 + Tailwind v4) + `packages/types` (mock Pessoas/Ensino). Telas: `/`, `/pessoas`, `/pessoas/[id]`, `/ensino`, `/ensino/curso/[id]`, `/brand`. **Build OK: 22 páginas, 0 erros de tipo.**
 
-### Próximo passo imediato
-- **Fase 1 — Identidade/design system:** criar `packages/ui` (tokens da Videira: Índigo `#3D4E9E`, Âmbar `#F2A93B`, Verde-sálvia `#5B8C7B`; fontes Inter + Fraunces), tema Tailwind, componentes base, logo SVG.
-- **Fase 3 — Demo:** `apps/demo` Next.js 15 + shell multi-módulo + mock data (`packages/types`); telas de Pessoas (lista, perfil, famílias, timeline) e Ensino (trilhas, curso, progresso). Basear em `docs/Módulos/01 Pessoas/Produto/PRD Pessoas.md` e `docs/Módulos/02 Ensino/000 - Hub Ensino.md`.
-- **Fase 4 — Deploy Vercel** a partir de `apps/demo`.
+### Como rodar a demo
+```bash
+pnpm install
+pnpm --filter @videira/demo dev   # http://localhost:3000
+pnpm --filter @videira/demo build # valida produção
+```
 
-### Pastas/arquivos-chave já criados
+### Próximo passo (Fase 4 — manual do dono)
+- Importar repo na Vercel → Root Directory = `apps/demo` → deploy. Instruções em `apps/demo/README.md`.
+- Opcional: favicon próprio, polish de responsividade, e evoluir mock → backend real (Supabase) trocando as fontes em `packages/types`.
+
+### Pastas/arquivos-chave
 - `package.json`, `pnpm-workspace.yaml`, `turbo.json` — config monorepo
+- `apps/demo/` — a demo (Next.js)
+- `packages/ui/`, `packages/types/` — design system e modelo+mock
 - `agents/` + `.claude/agents/` — agentes de IA
 - `ze-start.md`, `CLAUDE-ZE.md` — controle
 
@@ -71,4 +80,4 @@ git pull --ff-only   # se houver remoto
 
 ## Histórico de sessões
 
-- **2026-06-09:** Sessão inicial. Definidas decisões (monorepo/Videira/demo mock). Criados `ze-start.md` e `CLAUDE-ZE.md`. **Fase 0** (reorg + monorepo, commit `e84840a`) e **Fase 2** (10 agentes de IA) concluídas. Próximo: Fase 1 + Fase 3.
+- **2026-06-09:** Sessão inicial. Decisões (monorepo/Videira/demo mock). Criados `ze-start.md` e `CLAUDE-ZE.md`. **Fases 0, 1, 2, 3 concluídas:** reorg+monorepo (`e84840a`), 10 agentes de IA (`e4fb42b`), design system + demo Pessoas/Ensino com build validado. Falta deploy manual na Vercel.
