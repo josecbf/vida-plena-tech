@@ -67,12 +67,12 @@ videira/  (este repo)
 
 ## Todo list (com estimativas)
 
-### Fase 0 — Reorganização do repo · ~1–2h
-- [ ] Mover doc para `docs/` preservando histórico (`git mv`)
-- [ ] Scaffold do monorepo (pnpm workspaces + Turborepo)
-- [ ] `package.json` raiz + `.gitignore` de node
-- [ ] Ajustar referências em `COLLABORATION.md` / `README.md`
-- [ ] Commit na branch `ze-start`
+### Fase 0 — Reorganização do repo · ~1–2h ✅
+- [x] Mover doc para `docs/` preservando histórico (`git mv`)
+- [x] Scaffold do monorepo (pnpm workspaces + Turborepo)
+- [x] `package.json` raiz + `.gitignore` de node
+- [x] Ajustar referências em `COLLABORATION.md` / `README.md`
+- [x] Commit na branch `ze-start` (`e84840a`)
 
 ### Fase 1 — Identidade + design system · ~3–5h
 - [ ] Tokens de cor/tipografia (`packages/ui`)
@@ -80,10 +80,10 @@ videira/  (este repo)
 - [ ] Logo SVG + favicon
 - [ ] Página `/brand` na demo + doc de marca
 
-### Fase 2 — Agentes de IA (Squads) · ~2–3h
-- [ ] `agents/` com 1 arquivo por papel (10 papéis)
-- [ ] Definições executáveis em `.claude/agents/`
-- [ ] README explicando como acionar cada agente
+### Fase 2 — Agentes de IA (Squads) · ~2–3h ✅
+- [x] `agents/` com 1 arquivo por papel (10 papéis)
+- [x] Definições executáveis em `.claude/agents/`
+- [x] README explicando como acionar cada agente
 
 ### Fase 3 — Demo Pessoas + Ensino · ~8–12h
 - [ ] `apps/demo` Next.js + shell + navegação multi-módulo

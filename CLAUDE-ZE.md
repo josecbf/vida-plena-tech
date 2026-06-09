@@ -35,16 +35,23 @@ Contexto de produto completo está em `docs/` (após a reorg) — comece por `do
 
 ## Estado atual
 
-**Fase 0 — Reorganização do repo:** em andamento.
+**Fase 0 ✅ e Fase 2 ✅ concluídas. Próximo: Fase 1 (identidade/design system) + Fase 3 (demo).**
 
 ### Feito até agora
 - Branch `ze-start` criada.
-- `ze-start.md` criado (plano completo + todo list com estimativas).
-- `CLAUDE-ZE.md` criado (este arquivo).
+- `ze-start.md` (plano + todo) e `CLAUDE-ZE.md` (handoff) criados.
+- **Fase 0:** doc movida para `docs/` (histórico preservado), monorepo configurado (pnpm workspaces + Turborepo: `package.json`, `pnpm-workspace.yaml`, `turbo.json`), `.gitignore` atualizado, README/COLLABORATION ajustados. Commit `e84840a`.
+- **Fase 2:** 10 agentes canônicos em `agents/` + 10 definições executáveis em `.claude/agents/` + `agents/README.md` com modelo recomendado por papel.
 
 ### Próximo passo imediato
-- Concluir Fase 0: mover doc para `docs/`, scaffold do monorepo, ajustar referências, commit.
-- Em seguida Fase 2 (agentes) e depois Fase 1+3 (identidade + demo).
+- **Fase 1 — Identidade/design system:** criar `packages/ui` (tokens da Videira: Índigo `#3D4E9E`, Âmbar `#F2A93B`, Verde-sálvia `#5B8C7B`; fontes Inter + Fraunces), tema Tailwind, componentes base, logo SVG.
+- **Fase 3 — Demo:** `apps/demo` Next.js 15 + shell multi-módulo + mock data (`packages/types`); telas de Pessoas (lista, perfil, famílias, timeline) e Ensino (trilhas, curso, progresso). Basear em `docs/Módulos/01 Pessoas/Produto/PRD Pessoas.md` e `docs/Módulos/02 Ensino/000 - Hub Ensino.md`.
+- **Fase 4 — Deploy Vercel** a partir de `apps/demo`.
+
+### Pastas/arquivos-chave já criados
+- `package.json`, `pnpm-workspace.yaml`, `turbo.json` — config monorepo
+- `agents/` + `.claude/agents/` — agentes de IA
+- `ze-start.md`, `CLAUDE-ZE.md` — controle
 
 ---
 
@@ -64,4 +71,4 @@ git pull --ff-only   # se houver remoto
 
 ## Histórico de sessões
 
-- **2026-06-09:** Sessão inicial. Definidas decisões (monorepo/Videira/demo mock). Criados `ze-start.md` e `CLAUDE-ZE.md`. Iniciada Fase 0.
+- **2026-06-09:** Sessão inicial. Definidas decisões (monorepo/Videira/demo mock). Criados `ze-start.md` e `CLAUDE-ZE.md`. **Fase 0** (reorg + monorepo, commit `e84840a`) e **Fase 2** (10 agentes de IA) concluídas. Próximo: Fase 1 + Fase 3.
