@@ -127,7 +127,30 @@ Regras:
 - `communication.sent`
 - `communication.consent_missing`
 - `tap.donation.confirmed`
-- `tap.person_intake.submitted`
+- `tap.donation.failed`
+- `tap.donation.refunded`
+- `tap.gift_entry.created`
+- `tap.gift_batch.closed`
+
+### Contrato financeiro do TAP
+
+Eventos financeiros do TAP seguem o mesmo padrao outbox/inbox dos demais modulos. TAP atua como produtor; Financeiro atua como consumidor autorizado e fonte oficial para conciliacao, relatorios contabeis e prestacao de contas.
+
+| Evento | Produtor | Consumidor autorizado | Payload minimo | Idempotencia |
+|---|---|---|---|---|
+| `tap.donation.confirmed` | TAP | Financeiro | `donation_id`, `fund_id`, `amount`, `currency`, `method`, `gateway_provider`, `gateway_transaction_id`, `gateway_charge_id`, `confirmed_at`, `campus_id` | `tenant_id + gateway_provider + gateway_transaction_id` |
+| `tap.donation.failed` | TAP | Financeiro | `donation_id`, `fund_id`, `amount`, `method`, `gateway_provider`, `gateway_charge_id`, `failure_reason`, `failed_at` | `tenant_id + donation_id + failed` |
+| `tap.donation.refunded` | TAP | Financeiro | `donation_id`, `refund_id`, `amount`, `gateway_provider`, `gateway_transaction_id`, `refunded_at`, `reason` | `tenant_id + gateway_provider + refund_id` |
+| `tap.gift_entry.created` | TAP | Financeiro | `gift_entry_id`, `gift_batch_id`, `fund_id`, `amount`, `method`, `donated_at`, `recorded_by`, `campus_id` | `tenant_id + gift_entry_id` |
+| `tap.gift_batch.closed` | TAP | Financeiro | `gift_batch_id`, `campus_id`, `closed_by`, `closed_at`, `entry_count`, `total_amount_by_fund`, `total_amount_by_method` | `tenant_id + gift_batch_id + closed_at` |
+
+Regras:
+
+- TAP nao e ledger contabil oficial; mantem staging operacional.
+- Financeiro registra consumo em inbox antes de gerar efeito contabil.
+- Reprocessamento do mesmo evento nunca duplica receita, lancamento, relatorio ou conciliacao.
+- Payload financeiro nao carrega CPF completo, dados de cartao ou credenciais de gateway.
+- Dados financeiros individualizados sao no minimo nivel sensivel e exigem consumidor explicitamente autorizado.
 
 ## AuditLog
 

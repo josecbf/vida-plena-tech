@@ -262,8 +262,12 @@ is_anonymous: boolean
 status: created | pending | expired | confirmed | failed | cancelled | refunded
 confirmed_at: timestamp
 expires_at: timestamp (nullable)
+finance_event_published_at: timestamp (nullable)
+finance_event_id: uuid (nullable)
 created_at: timestamp
 ```
+
+`Donation` é staging operacional do TAP, não ledger contábil oficial. Ele registra a origem da doação, o estado do gateway e os dados mínimos para emitir evento idempotente ao Financeiro.
 
 ### GiftBatch
 ```
@@ -275,6 +279,8 @@ status: open | reviewing | closed | reopened | exported
 opened_by: uuid → User
 closed_by: uuid → User (nullable)
 closed_at: timestamp (nullable)
+finance_event_published_at: timestamp (nullable)
+finance_event_id: uuid (nullable)
 notes: string
 created_at, updated_at: timestamp
 ```
@@ -295,8 +301,12 @@ donor_cpf_encrypted: string (nullable)
 donated_at: date
 notes: string
 recorded_by: uuid → User
+finance_event_published_at: timestamp (nullable)
+finance_event_id: uuid (nullable)
 created_at: timestamp
 ```
+
+`GiftEntry` é lançamento operacional de origem física ou externa. O fechamento e a consolidação oficial pertencem ao módulo Financeiro após consumo dos eventos do TAP.
 
 ### PastoralFormSubmission
 ```
@@ -390,6 +400,23 @@ type TapFinanceEvent = {
   payload: Record<string, unknown>
 }
 ```
+
+Payload mínimo por evento financeiro:
+
+| Evento | Aggregate | Payload mínimo |
+|---|---|---|
+| `tap.donation.confirmed` | `Donation` | `donation_id`, `fund_id`, `amount`, `currency`, `method`, `gateway_provider`, `gateway_transaction_id`, `gateway_charge_id`, `confirmed_at`, `tap_device_id`, `is_anonymous`, `receipt_requested` |
+| `tap.donation.failed` | `Donation` | `donation_id`, `fund_id`, `amount`, `method`, `gateway_provider`, `gateway_charge_id`, `failure_reason`, `failed_at` |
+| `tap.donation.refunded` | `Donation` | `donation_id`, `refund_id`, `amount`, `gateway_provider`, `gateway_transaction_id`, `refunded_at`, `reason` |
+| `tap.gift_entry.created` | `GiftEntry` | `gift_entry_id`, `gift_batch_id`, `fund_id`, `amount`, `method`, `donated_at`, `recorded_by`, `reference` |
+| `tap.gift_batch.closed` | `GiftBatch` | `gift_batch_id`, `campus_id`, `closed_by`, `closed_at`, `entry_count`, `total_amount_by_fund`, `total_amount_by_method` |
+
+Regras do contrato financeiro:
+- TAP grava evento em outbox na mesma transação que confirma doação, cria Gift Entry ou fecha lote.
+- Financeiro consome via inbox e registra `event_id`, `tenant_id`, `idempotency_key` e status de processamento.
+- Reprocessamento do mesmo evento não pode duplicar receita, lançamento ou relatório.
+- CPF, credenciais de gateway e dados completos do doador não trafegam no payload financeiro aberto; quando necessário, usar referência ao registro de origem e acesso autorizado.
+- O contrato financeiro é gate para tirar Pix e Gift Entry de piloto.
 
 ### Integração futura com Pessoas
 

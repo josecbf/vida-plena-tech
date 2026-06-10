@@ -218,7 +218,22 @@ Separação de precisão:
 
 #### Financeiro
 
-TAP publica eventos de domínio; Financeiro consolida e presta contas.
+TAP publica eventos de domínio; Financeiro consolida, concilia e presta contas.
+
+Fronteira de responsabilidade:
+
+| Responsabilidade | TAP | Financeiro |
+|---|---|---|
+| Criar cobrança Pix no gateway | Sim | Não |
+| Receber e validar webhook do gateway | Sim | Não |
+| Guardar staging operacional da origem da doação | Sim | Consome por evento |
+| Emitir recibo transacional simples quando houver e-mail | Sim | Pode complementar no futuro |
+| Ser ledger contábil oficial | Não | Sim |
+| Conciliar gateway, caixa físico e relatórios oficiais | Não | Sim |
+| Produzir prestação de contas oficial | Não | Sim |
+| Exibir dashboard operacional de culto | Sim | Pode consumir dados consolidados |
+
+O dashboard financeiro do TAP é operacional. Ele ajuda a equipe durante culto e piloto, mas não substitui relatório oficial, fechamento contábil, conciliação bancária ou prestação de contas do módulo Financeiro.
 
 Eventos mínimos:
 - `tap.donation.confirmed`
@@ -227,7 +242,17 @@ Eventos mínimos:
 - `tap.gift_entry.created`
 - `tap.gift_batch.closed`
 
-Cada evento inclui `event_id`, `schema_version`, `tenant_id`, `campus_id`, `occurred_at`, `idempotency_key`, entidade de origem e payload mínimo.
+Cada evento inclui `event_id`, `schema_version`, `tenant_id`, `campus_id`, `occurred_at`, `idempotency_key`, entidade de origem e payload mínimo. O payload financeiro não deve expor CPF completo, credenciais de gateway ou dados de cartão.
+
+Idempotência mínima:
+- Doação confirmada usa `idempotency_key = tenant_id + gateway_provider + gateway_transaction_id`.
+- Cobrança Pix pendente usa `tenant_id + gateway_provider + gateway_charge_id`.
+- Webhook usa `tenant_id + gateway_provider + gateway_event_id`.
+- Gift Entry usa `tenant_id + gift_entry_id`.
+- Fechamento de lote usa `tenant_id + gift_batch_id + closed_at`.
+- Reenvio de evento já processado pelo Financeiro não pode duplicar receita, doação ou lançamento contábil.
+
+Gate de aceite: Pix, dashboard financeiro confirmado e Gift Entry só podem sair de piloto quando o módulo Financeiro aceitar esses eventos e registrar consumo idempotente em inbox.
 
 #### Pessoas
 
