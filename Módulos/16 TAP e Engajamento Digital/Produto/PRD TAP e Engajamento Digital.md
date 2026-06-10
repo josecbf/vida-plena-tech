@@ -290,7 +290,7 @@ Ações sensíveis exigem `AuditLog`: visualizar submissão pastoral, exportar d
 - Até 5 grupos TAP
 - Pix via gateway suportado
 - Troca manual de destino
-- 3 fundos
+- Mínimo de 3 fundos: Dízimo, Oferta e Missões
 - Destinos: oferta e URL externa
 - Gift Entry básico
 - Suporte por base de conhecimento
@@ -318,7 +318,21 @@ Ações sensíveis exigem `AuditLog`: visualizar submissão pastoral, exportar d
 - Analytics com IA
 - Suporte prioritário
 
-Ao atingir limite de plano, o sistema não quebra fluxos públicos já instalados durante culto. O bloqueio é administrativo: impede criar novos recursos acima do limite, exibe alerta e oferece upgrade. Recursos existentes continuam funcionando durante uma janela de graça definida comercialmente.
+### Limites, alertas e janela de graça
+
+Ao atingir limite de plano, o sistema não quebra fluxos públicos já instalados durante culto. O bloqueio é administrativo: impede criar novos recursos acima do limite, exibe alerta e oferece upgrade.
+
+Regras obrigatórias:
+- TAP público já configurado continua redirecionando durante a janela de graça.
+- Doações Pix já iniciadas continuam até confirmação, expiração ou falha do gateway.
+- Gift Entry em lote aberto pode ser concluído; novos lotes podem ser bloqueados após a janela.
+- Atingir limite bloqueia criação administrativa de novos grupos, destinos, fundos acima do limite ou automações, mas não derruba destino ativo.
+- Alertas administrativos aparecem para `owner` e `admin` ao atingir 80%, 100% e após expirar a janela de graça.
+- Durante culto ativo ou janela operacional configurada, o sistema nunca troca o destino público para tela de cobrança, erro comercial ou bloqueio.
+- Após a janela de graça, recursos existentes continuam em modo leitura/execução essencial; criação/edição acima do limite permanece bloqueada até upgrade, arquivamento ou redução de uso.
+- Credenciais de gateway, recibos, webhooks e confirmação de doações não podem ser suspensos por limite comercial enquanto houver transação pendente.
+
+Limites avançados por uso, como múltiplos gateways por campus, domínio próprio, automações ProPresenter, métodos de pagamento adicionais e IA, pertencem às fases comerciais futuras e devem ser controlados por feature flags.
 
 ---
 
