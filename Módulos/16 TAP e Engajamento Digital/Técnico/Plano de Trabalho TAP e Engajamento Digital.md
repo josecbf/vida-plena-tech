@@ -52,6 +52,59 @@ Entregar valor real o mais cedo possível. A Fase 1 já deve ser utilizável em 
 
 **Critério de aceite:** Uma moeda NFC programada com a URL redireciona corretamente para o destino configurado, em < 2s, sem login do visitante.
 
+### Aceite integrado da Fase 1 — Alpha operacional
+
+O Alpha operacional só é considerado pronto quando o roteiro abaixo for executado em ambiente de staging ou piloto controlado, com uma moeda NFC real ou QR equivalente programado com a URL pública do dispositivo.
+
+**Papéis envolvidos:**
+- `admin`: cria campus, grupo TAP, dispositivo, destino padrão e usuário de comunicação.
+- `comunicacao`: cria/publica destino permitido e troca destino ativo do grupo durante o culto.
+- visitante: toca a moeda NFC ou lê o QR sem login e recebe o destino ativo correto.
+
+**Roteiro feliz ponta a ponta:**
+1. Admin cria organização/campus de teste e confirma isolamento multi-tenant.
+2. Admin cria grupo TAP ativo com destino padrão opcional.
+3. Admin cadastra dispositivo TAP no grupo e copia URL pública `/t/{device-id}`.
+4. Admin programa a URL em moeda NFC ou gera QR equivalente.
+5. Comunicação cria destino `own_page` com título, texto, botão e imagem opcional.
+6. Comunicação publica o destino após validação de campos.
+7. Comunicação ativa o destino no grupo com duração definida e retorno ao destino padrão.
+8. Visitante toca a moeda NFC sem login.
+9. Redirect resolve dispositivo, grupo e destino ativo, registra analytics de forma não bloqueante e abre o destino correto.
+10. Ao final da duração, o grupo retorna ao destino padrão ou ao estado confirmado.
+11. Histórico mostra troca manual, retorno e usuário responsável.
+
+**Cenários de falha obrigatórios:**
+- Device inexistente ou com formato inválido: página de contingência genérica, sem revelar se o ID existe.
+- Device inativo ou arquivado: página "TAP indisponível".
+- Grupo inativo, arquivado ou fora do campus permitido: contingência segura.
+- Grupo sem destino ativo e sem destino padrão: página "Conteúdo em breve" ou contingência genérica.
+- Destino `draft`, `inactive`, `archived`, URL inválida ou domínio reprovado: bloqueio na ativação; se ocorrer em runtime, fallback para destino padrão válido ou contingência.
+- Usuário `comunicacao` fora do campus: grupo não aparece e a ativação é bloqueada.
+- Falha de analytics: redirect continua funcionando e erro fica observável internamente.
+- Rate limit/tráfego suspeito: não contamina métrica limpa e não revela existência do device-id.
+
+**Checklist go/no-go para piloto sem pagamento:**
+- [ ] Admin consegue criar campus, grupo, dispositivo e URL pública única.
+- [ ] URL pública e QR equivalente abrem sem login do visitante.
+- [ ] Comunicação consegue criar/publicar destino permitido.
+- [ ] Comunicação consegue trocar destino ativo com duração e retorno documentados.
+- [ ] Comunicação não acessa financeiro, gateway, Gift Entry ou dados pastorais sensíveis.
+- [ ] Redirect abre o destino ativo em menos de 2 segundos na experiência real do visitante.
+- [ ] Endpoint público mantém p95 abaixo de 200ms em teste de 500 requisições simultâneas com cache hit.
+- [ ] Device/grupo/destino inválido não expõe erro técnico ao visitante.
+- [ ] Analytics de tap não bloqueia redirect e não coleta dado pessoal direto automaticamente.
+- [ ] Histórico/auditoria registra criação, publicação, troca manual e retorno.
+- [ ] Critérios cross-tenant/cross-campus foram testados para impedir referência cruzada.
+- [ ] Plano de rollback existe: desativar dispositivo/grupo, voltar destino padrão ou servir contingência.
+
+**Métricas mínimas para aceite:**
+- Tempo percebido pelo visitante: destino ativo aberto em < 2s.
+- Redirect engine: p95 < 200ms com 500 requisições simultâneas em cache hit.
+- Taxa de erro público em roteiro feliz: 0%.
+- Analytics: perda de evento aceitável apenas em falha controlada; redirect não pode falhar por causa de analytics.
+- Segurança: nenhuma resposta pública exibe stack trace, ID interno, tenant interno ou detalhe de banco/cache.
+
 **Duração estimada:** 2–3 semanas
 
 ---

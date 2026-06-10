@@ -41,7 +41,9 @@ Em 2026-06-09, os achados foram incorporados nos documentos-fonte do módulo:
 - Limites comerciais não devem derrubar TAP público durante culto; usar janela de graça e alerta administrativo.
 - Piloto inicial: Comunidade Vida Plena.
 
-**Gate restante:** Financeiro precisa aceitar os eventos idempotentes do TAP antes do MVP comercial. Pessoas passa a ser integração futura, não bloqueio do escopo atual.
+**Gate restante:** antes da Fase 2 Pix controlado, executar o aceite integrado do Alpha operacional: moeda NFC real ou QR equivalente abrindo destino ativo correto em < 2s, com fallback seguro, painel de comunicação validado e sem login do visitante. Para o MVP comercial, Financeiro ainda precisa aceitar os eventos idempotentes do TAP. Pessoas passa a ser integração futura, não bloqueio do escopo atual.
+
+**Próximo passo documental:** usar o roteiro de aceite da Fase 1 em `Módulos/16 TAP e Engajamento Digital/Técnico/Plano de Trabalho TAP e Engajamento Digital.md` como checklist go/no-go do piloto sem pagamento.
 
 ---
 
