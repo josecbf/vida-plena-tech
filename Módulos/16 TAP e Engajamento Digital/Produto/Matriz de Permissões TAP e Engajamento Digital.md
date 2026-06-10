@@ -40,6 +40,7 @@ Nenhum papel recebe acesso sensível por inferência. Acesso a dinheiro identifi
 | Registrar dispositivo físico | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Ver URL e QR de dispositivo | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ |
 | Ver destino ativo de grupo | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
+| Ver saúde agregada do redirect por grupo/campus | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
 
 ### Destinos
 
@@ -51,9 +52,17 @@ Nenhum papel recebe acesso sensível por inferência. Acesso a dinheiro identifi
 | Publicar / despublicar destino | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ |
 | Publicar URL externa sem aprovação | ✅ | ✅ | ⚠️ | ❌ | ❌ | ❌ |
 | Ativar destino em grupo | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ |
+| Ativar destino com duração e retorno automático | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ |
 | Agendar troca de destino | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ |
 
 `⚠️` significa permitido apenas quando a política da organização liberar; caso contrário exige aprovação de `admin` ou `owner`.
+
+Regras específicas para `comunicacao` no Alpha:
+- Não acessa dashboard financeiro, doações identificadas, CPF/e-mail de doador, gateway, Gift Entry ou exportações financeiras.
+- Não acessa conteúdo individual de formulários pastorais, apenas contagens agregadas quando autorizado.
+- Só visualiza e opera grupos dos campi em seu escopo.
+- Pode trocar destino ativo durante culto, mas a duração do override é obrigatória salvo política explícita de admin/owner.
+- Toda troca feita por `comunicacao` gera auditoria obrigatória.
 
 ### ProPresenter
 
