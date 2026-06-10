@@ -151,6 +151,39 @@ Próximo tap já recebe o novo destino
 
 Toda troca de destino registra `AuditLog` com origem, usuário/token, campus, grupo, destino anterior, destino novo, duração do override e justificativa quando aplicável.
 
+**Fluxo operacional do painel de comunicação:**
+```
+Comunicação abre Console ao vivo
+  ↓
+Seleciona campus permitido
+  ↓
+Visualiza grupos TAP, destino ativo, destino padrão e saúde do redirect
+  ↓
+Clica em "Trocar" em um grupo
+  ↓
+Seleciona destino publicado e duração do override
+  ↓
+Confirma ativação
+  ↓
+Sistema valida permissão, campus, status do grupo e status do destino
+  ↓
+Atualiza destino ativo e agenda retorno quando houver duração
+  ↓
+Invalida cache do grupo
+  ↓
+Registra AuditLog e exibe confirmação visual
+```
+
+**Regras do painel de comunicação:**
+- O painel é operacional, focado em culto ao vivo, não em administração geral.
+- `comunicacao` visualiza grupos, dispositivos, URL, QR, destino ativo e saúde agregada do redirect dentro do campus permitido.
+- `comunicacao` cria, edita e publica destinos permitidos, respeitando política de URL externa.
+- `comunicacao` ativa destino em grupo com duração obrigatória no Alpha.
+- Retorno padrão após override é `default_destination_id` do grupo.
+- Se o grupo não tiver destino padrão, o usuário deve confirmar explicitamente que o destino ficará ativo até nova troca.
+- Troca manual não concede acesso a financeiro, doações identificadas, gateway, Gift Entry ou conteúdo individual de formulários pastorais.
+- Estados de sucesso e erro devem preservar clareza operacional: destino anterior, destino novo, duração, horário previsto de retorno e falhas recuperáveis.
+
 **Critérios de aceite do Alpha:**
 - Comunicação cria rascunho `own_page`, preenche campos mínimos e publica após validação.
 - Admin cria rascunho `external_url` com URL `https://` válida e visualiza preview do domínio antes de publicar.

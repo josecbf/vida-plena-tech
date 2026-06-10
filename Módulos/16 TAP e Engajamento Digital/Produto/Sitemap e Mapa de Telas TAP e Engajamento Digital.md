@@ -72,22 +72,28 @@ O módulo tem dois contextos distintos:
 
 ## Painel de Comunicação — Sitemap simplificado
 
-Acesso restrito ao perfil "Comunicação". Sem dados financeiros individuais.
+Acesso restrito ao perfil "Comunicação". Sem dados financeiros individuais, credenciais de gateway, Gift Entry ou conteúdo individual de formulários pastorais.
 
 ```
 /comunicacao/tap
 │
+├── /ao-vivo
+│     Console de culto: grupos, destino ativo, saúde do redirect e ação rápida
+│
 ├── /destinos
-│     Lista dos destinos da organização com destaque no ativo
+│     Lista dos destinos permitidos com status, tipo, domínio e uso atual
 │
 ├── /destinos/novo
-│     Editor simplificado por tipo
+│     Editor simplificado: página própria ou URL externa
+│
+├── /destinos/{id}/editar
+│     Edição de conteúdo, preview e publicação conforme política
 │
 ├── /ativar
-│     Seletor rápido: qual destino ativar agora em qual grupo
+│     Seletor rápido: qual destino ativar agora em qual grupo, com duração
 │
 └── /agenda
-      Agendamentos da semana
+      Agendamentos simples da semana, somente leitura/edição básica no Alpha
 ```
 
 ---
@@ -166,6 +172,87 @@ Acesso restrito ao perfil "Comunicação". Sem dados financeiros individuais.
 │  [  Salvar rascunho  ]  [ Publicar ✓  ] │
 └─────────────────────────────────────────┘
 ```
+
+---
+
+### T02A — Console ao vivo da Comunicação
+
+Tela inicial do perfil `comunicacao` durante o culto. A prioridade é verificar para onde cada grupo aponta e trocar rapidamente sem entrar em áreas financeiras ou pastorais.
+
+```
+┌────────────────────────────────────────────────────────┐
+│ TAP ao vivo — Campus Sede                              │
+│ Saúde do redirect: ● Normal | p95 120ms | erros 0,2%   │
+│                                                        │
+│ Grupo                  Destino ativo        Ação        │
+│ ┌────────────────────────────────────────────────────┐ │
+│ │ Entrada principal     Página Boas-vindas  [Trocar] │ │
+│ │ Auditório             Oferta Culto 19h    [Trocar] │ │
+│ │ Kids                  Inscrição Kids      [Trocar] │ │
+│ └────────────────────────────────────────────────────┘ │
+│                                                        │
+│ Últimas trocas                                        │
+│ 19:05 — Auditório → Oferta Culto 19h por Ana          │
+│ 18:40 — Entrada principal → Página Boas-vindas        │
+└────────────────────────────────────────────────────────┘
+```
+
+**Ações disponíveis:**
+- Filtrar por campus permitido.
+- Ver grupos TAP, destino ativo, destino padrão e última troca.
+- Abrir QR/URL de dispositivo em modo somente leitura.
+- Abrir ação "Trocar destino" por grupo.
+- Ver saúde operacional agregada do redirect.
+- Ver contagens agregadas de taps e formulários, sem dados individuais.
+
+**Estados obrigatórios:**
+- Sem grupos: orientar solicitar criação a `admin`.
+- Grupo sem destino: destacar "Sem destino ativo" e oferecer seleção de destino publicado.
+- Destino inativo: bloquear ativação e mostrar motivo objetivo.
+- Sem permissão de campus: ocultar grupos fora do escopo.
+- Erro de troca: manter destino anterior visível e exibir falha recuperável.
+- Sucesso de troca: mostrar confirmação com novo destino, duração e horário previsto de retorno.
+
+---
+
+### T02B — Ativação rápida de destino
+
+Fluxo usado para mudar o destino durante o culto.
+
+```
+┌──────────────────────────────────────────────┐
+│ Trocar destino — Grupo Auditório             │
+│                                              │
+│ Destino atual: Página Boas-vindas            │
+│ Destino padrão: Página Boas-vindas           │
+│                                              │
+│ Novo destino: [Oferta Culto 19h          ▼] │
+│ Duração:      [ Até fim do culto ▼ ]         │
+│              ( ) 15 min  ( ) 30 min          │
+│              ( ) 60 min  ( ) horário manual  │
+│                                              │
+│ Após a duração:                              │
+│ (●) Retornar ao destino padrão               │
+│ ( ) Manter destino até nova troca            │
+│                                              │
+│ [Cancelar]                         [Ativar]  │
+└──────────────────────────────────────────────┘
+```
+
+**Regras da ativação manual:**
+- Apenas destinos `active` e permitidos ao campus podem ser selecionados.
+- Duração é obrigatória no Alpha, exceto quando `admin/owner` habilitar permanência manual.
+- O retorno padrão é voltar para `default_destination_id` do grupo.
+- Se não houver destino padrão, o usuário precisa confirmar "manter até nova troca".
+- Toda troca registra usuário, campus, grupo, destino anterior, destino novo, duração, origem `manual` e motivo opcional.
+- Após ativar, o cache do grupo deve ser invalidado para o próximo tap usar o destino novo.
+
+**Feedback visual:**
+- Antes de ativar: preview do domínio ou da página própria.
+- Durante ativação: estado carregando sem duplicar clique.
+- Sucesso: confirmação persistente por alguns segundos e atualização imediata da lista.
+- Falha: mensagem com ação recomendada, sem alterar visualmente o destino ativo.
+- Retorno automático executado: evento aparece em "Últimas trocas".
 
 ---
 

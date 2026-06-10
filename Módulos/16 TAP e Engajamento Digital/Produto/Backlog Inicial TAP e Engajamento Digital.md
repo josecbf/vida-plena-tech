@@ -114,6 +114,21 @@ tags:
 
 - Como usuário com papel "comunicação", quero ver só os destinos e o controle de ativação, sem acessar dados financeiros, para focar no meu trabalho.
 - Como comunicação, quero trocar o destino ativo de um grupo com um clique, para reagir rapidamente durante o culto.
+- Como comunicação, quero ver um console ao vivo com grupos, destino ativo e saúde agregada do redirect, para operar o culto sem entrar em áreas administrativas.
+- Como comunicação, quero definir duração para uma troca manual e retorno ao destino padrão, para evitar que o TAP fique preso no destino errado.
+- Como comunicação, quero receber confirmação visual de sucesso ou erro ao trocar destino, para saber se o próximo tap já deve abrir o conteúdo correto.
+
+**Critérios de aceite E05:**
+- [ ] Painel de comunicação possui telas mínimas: console ao vivo, destinos, editor de destino, ativação rápida e agenda simples da semana.
+- [ ] `comunicacao` visualiza grupos, dispositivos, URL, QR e destino ativo somente nos campi permitidos.
+- [ ] `comunicacao` não acessa dashboard financeiro, gateway, Gift Entry, doações individualizadas, CPF/e-mail de doador ou exportações financeiras.
+- [ ] `comunicacao` não acessa conteúdo individual de formulários pastorais.
+- [ ] Troca manual só permite destino `active` e válido para o campus/grupo.
+- [ ] Troca manual exige duração no Alpha ou confirmação explícita para manter até nova troca quando permitido.
+- [ ] Retorno automático usa destino padrão do grupo e registra evento em histórico.
+- [ ] Sucesso mostra novo destino, duração e horário previsto de retorno.
+- [ ] Erro mantém destino anterior e informa ação recuperável sem expor detalhe técnico.
+- [ ] Toda troca manual registra auditoria com usuário, campus, grupo, destino anterior, destino novo, duração e origem `manual`.
 
 ### Aceite integrado — Fase 1 Alpha operacional
 
