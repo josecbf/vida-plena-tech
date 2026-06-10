@@ -38,6 +38,36 @@ tags:
 
 **Consequência:** Existe uma janela de até 10s onde um tap pode servir o destino anterior após uma troca. Trocas manuais e ProPresenter devem invalidar cache imediatamente. Agendamentos também invalidam cache ao aplicar troca.
 
+**Complemento Alpha:** além do cache principal, o redirect pode manter último destino válido por até 5 minutos para degradação controlada quando banco/cache falharem. Esse fallback só pode ser usado se o status inválido do dispositivo, grupo ou destino não for conhecido no momento da requisição.
+
+---
+
+## ADR-02A — Analytics fora do caminho crítico do redirect
+
+**Contexto:** A Fase 1 exige que o visitante seja redirecionado em menos de 2 segundos. Gravação de analytics, filas ou banco não podem transformar uma métrica operacional em bloqueio de experiência.
+
+**Decisão:** `TapEvent` é gravado de forma assíncrona, usando `waitUntil()`, fila, outbox ou mecanismo equivalente compatível com Edge Runtime. O redirect responde antes da confirmação de persistência do evento.
+
+**Motivação:** Preserva latência baixa e evita que falhas temporárias de banco/analytics derrubem o fluxo público do culto.
+
+**Consequência:** Analytics pode ter perda controlada em incidentes. Dashboards devem distinguir métrica operacional de dado financeiro ou contábil.
+
+**Guardrail:** `TapEvent` não armazena dado pessoal direto do visitante. IP e user agent, quando usados para segurança, devem ter retenção curta, truncamento, hash efêmero ou agregação.
+
+---
+
+## ADR-02B — Contingência pública sem vazamento técnico
+
+**Contexto:** Dispositivos NFC ficam em ambientes públicos. URLs inválidas, device-id inexistente, destino inativo ou falha de infraestrutura não podem expor stack trace, IDs internos ou pistas úteis para enumeração.
+
+**Decisão:** Todo erro do endpoint público converge para páginas de contingência controladas: "TAP indisponível", "Conteúdo em breve" ou fallback de marca pública da organização/campus quando disponível.
+
+**Motivação:** Mantém a experiência compreensível para o visitante e reduz vazamento de informação operacional.
+
+**Consequência:** Logs internos precisam guardar o motivo real da falha, porque a tela pública será genérica por padrão.
+
+**Guardrail:** A resposta pública não revela se o `device-id` existe, qual tenant é dono do dispositivo, nem detalhes de cache, banco ou política de destino.
+
 ---
 
 ## ADR-03 — RLS (Row Level Security) no Supabase como barreira de multi-tenant

@@ -41,16 +41,29 @@ tags:
 ### FT-02 — Redirect Engine
 
 - [ ] Edge Function `/t/[device-id]`
+- [ ] Validação de formato de `device-id` sem revelar existência do dispositivo
+- [ ] Resolução de `tap_devices.public_id` para device, grupo, campus, organização e destino ativo
 - [ ] Integração com Vercel KV para cache de destino ativo
+- [ ] Cache principal com TTL de 10s para resolução device/grupo/destino
+- [ ] Fallback para banco em cache miss com timeout curto
+- [ ] Último destino válido por janela curta de degradação controlada
 - [ ] Invalidação de cache na troca de destino
-- [ ] Log de tap events fora do caminho crítico do redirect
+- [ ] Log de `TapEvent` fora do caminho crítico do redirect
+- [ ] `TapEvent` sem nome, e-mail, telefone, CPF, texto livre ou identificador persistente de visitante
+- [ ] Status do resultado registrado em analytics: redirect, contingência, rate limit, device inválido, destino inválido
 - [ ] Rate limit leve no endpoint público
+- [ ] Rate limit por IP + device-id com política que preserve picos legítimos de culto
 - [ ] Device IDs não enumeráveis
 - [ ] Marcação de tráfego suspeito
+- [ ] Filtro de tráfego suspeito para não contaminar dashboard de engajamento limpo
 - [ ] Tela padrão "em breve" para grupos sem destino ativo
 - [ ] Página de contingência para device inativo, destino inativo e erro de cache/banco
+- [ ] Página de contingência genérica para device inexistente, formato inválido e enumeração suspeita
+- [ ] Página pública sem stack trace, IDs internos, tenant interno ou detalhe de infraestrutura
+- [ ] Testes de contingência: device inexistente, device inativo, grupo inativo, grupo sem destino, destino inativo, cache fora, banco fora
 - [ ] Teste de carga: 500 requisições simultâneas < 200ms p95
 - [ ] Teste de carga estendido: 2.000 e 10.000 taps simulados com degradação controlada
+- [ ] Relatório de carga separando redirect limpo, contingência esperada, rate limit e erro real
 
 ### FT-03 — API de Administração
 
