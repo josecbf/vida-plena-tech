@@ -119,7 +119,7 @@ Esses modulos devem entrar quando a fundacao ja estiver confiavel, porque aument
 
 ## Decisao recomendada
 
-Nao tentar construir os 15 modulos em paralelo. O melhor caminho e vender a visao completa, mas construir em ondas:
+Nao tentar construir os 16 modulos em paralelo. O melhor caminho e vender a visao completa, mas construir em ondas:
 
 1. Plataforma base + Pessoas.
 2. Operacao pastoral: SOM, GCs e Ensino.
@@ -137,4 +137,3 @@ Estado atual apos esta auditoria:
 - Prontidao para desenvolvimento: parcial.
 - Prontidao para validacao com igrejas reais: boa se acompanhada de entrevistas.
 - Prontidao para ser "melhor produto do mercado": ainda depende de validar fluxos reais, reduzir generalidade e priorizar execucao.
-
