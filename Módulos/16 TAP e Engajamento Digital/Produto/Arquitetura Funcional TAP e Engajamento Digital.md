@@ -46,6 +46,33 @@ O módulo é dividido em cinco áreas funcionais com fronteiras claras:
 - Exibição do destino ativo atual por grupo
 - Log de trocas de destino (quem trocou, quando, por qual meio)
 
+**Campos mínimos do grupo TAP:**
+- campus;
+- nome interno;
+- descrição opcional;
+- destino padrão opcional;
+- destino ativo atual;
+- status: ativo / inativo / arquivado.
+
+**Campos mínimos do dispositivo TAP:**
+- grupo TAP;
+- nome interno;
+- localização física;
+- identificador público não enumerável;
+- URL pública gerada automaticamente;
+- QR code equivalente;
+- status: ativo / inativo / arquivado.
+
+**Regras de produto:**
+- Um grupo TAP sempre pertence a um único campus.
+- Um dispositivo TAP sempre pertence a um único grupo.
+- A URL pública do dispositivo não pode ser editada manualmente.
+- O QR code sempre representa a mesma URL pública do dispositivo.
+- Desativar um grupo impede novos redirects de seus dispositivos e serve página de contingência.
+- Arquivar grupo ou dispositivo não apaga histórico de taps, trocas ou auditoria.
+- Excluir fisicamente só é permitido se não houver histórico operacional; caso contrário, usar arquivamento.
+- Comunicação pode visualizar grupos, dispositivos, URL, QR e destino ativo, mas não cria nem exclui dispositivos.
+
 **Fluxo de configuração de um novo dispositivo:**
 ```
 Admin cria grupo TAP (campus, nome, descrição)
@@ -60,6 +87,14 @@ Admin configura o destino padrão do grupo
   ↓
 Dispositivo está operacional
 ```
+
+**Critérios de aceite do Alpha:**
+- Admin cria um grupo TAP vinculado a um campus ativo.
+- Admin registra um dispositivo no grupo e recebe URL pública única.
+- Sistema gera QR code equivalente à URL pública.
+- Comunicação visualiza URL, QR e destino ativo sem permissão de edição estrutural.
+- Dispositivo ou grupo inativo não expõe erro técnico ao visitante; usa página de contingência.
+- Tentativa de usar dispositivo de outro tenant/campus é bloqueada por validação e RLS.
 
 ---
 

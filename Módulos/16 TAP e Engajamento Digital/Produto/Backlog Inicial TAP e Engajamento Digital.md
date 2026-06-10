@@ -68,9 +68,20 @@ tags:
 ### E02 — Dispositivos e grupos
 
 - Como admin, quero criar um grupo TAP associado a um campus e dar um nome a ele, para organizar meus dispositivos logicamente.
+- Como admin, quero configurar um destino padrão opcional para o grupo, para ter fallback quando não houver override ativo.
 - Como admin, quero registrar um dispositivo físico dentro de um grupo e receber uma URL única, para programar a moeda NFC.
 - Como admin, quero ver o QR code equivalente da URL do dispositivo, para imprimir como fallback.
 - Como admin, quero ver qual é o destino ativo de cada grupo em tempo real, para saber o que o TAP está apontando agora.
+- Como comunicação, quero visualizar URL, QR e destino ativo sem poder excluir dispositivos, para operar o culto sem risco estrutural.
+- Como admin, quero desativar ou arquivar grupo/dispositivo preservando histórico, para tirar itens de uso sem perder auditoria.
+
+**Critérios de aceite E02:**
+- [ ] Grupo TAP é criado com campus, nome, status e destino padrão opcional.
+- [ ] Dispositivo TAP é criado dentro de um grupo e recebe `public_id` não enumerável.
+- [ ] URL pública e QR code são gerados automaticamente e não editados manualmente.
+- [ ] Comunicação consegue visualizar URL, QR e destino ativo, mas não cria/exclui grupos ou dispositivos.
+- [ ] Grupo/dispositivo inativo ou arquivado não redireciona para destino ativo; cai em contingência.
+- [ ] Validação impede referência cruzada entre tenants/campus.
 
 ### E03 — Redirect engine
 
