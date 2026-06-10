@@ -30,7 +30,7 @@ tags:
 | **Doação** | Registro de uma contribuição financeira digital confirmada pelo gateway. |
 | **Gift entry** | Registro manual de contribuição física (dinheiro, cheque, Pix fora da plataforma). |
 | **Gateway** | Serviço externo de processamento de pagamentos configurado pela organização. |
-| **Formulário pastoral** | Tipo de destino que exibe um formulário específico (visitante, oração, batismo, célula) e encaminha os dados ao módulo Pessoas. |
+| **Formulário pastoral** | Tipo de destino que exibe um formulário específico (visitante, oração, batismo, célula) e mantém a submissão como registro operacional do TAP no escopo atual. |
 | **Tenant** | Vocabulário técnico global equivalente à organização contratante. No schema, preferir `tenant_id`; na linguagem de produto, usar organização. |
 | **Consentimento** | Registro versionado da autorização dada pelo titular para coleta e tratamento de dados pessoais. |
 | **Evento financeiro idempotente** | Evento de gateway ou domínio processado uma única vez, mesmo se recebido repetidamente. |
@@ -253,7 +253,7 @@ method: pix | credit_card | debit_card | apple_pay | google_pay
 gateway_provider: string
 gateway_transaction_id: string
 gateway_charge_id: string (nullable)
-donor_person_id: uuid → Person (nullable)
+donor_person_id: uuid → Person (nullable, futuro; não preenchido no escopo atual)
 donor_name: string (nullable)
 donor_email: string (nullable)
 donor_cpf_encrypted: string (nullable)
@@ -289,7 +289,7 @@ batch_id: uuid → GiftBatch
 amount: decimal
 method: cash | check | external_pix | other
 reference: string (número de cheque, comprovante etc.)
-donor_person_id: uuid → Person (nullable)
+donor_person_id: uuid → Person (nullable, futuro; não preenchido no escopo atual)
 donor_name: string (nullable)
 donor_cpf_encrypted: string (nullable)
 donated_at: date
@@ -306,8 +306,7 @@ campus_id: uuid → Campus
 destination_id: uuid → Destination
 form_type: visitor | prayer | decision | baptism | cell_group
 payload: jsonb (criptografar campos sensíveis quando aplicável)
-submitter_person_id: uuid → Person (nullable)
-intake_status: anonymous | pending | matched | created | needs_review | rejected
+submission_status: received | reviewed | archived | anonymized
 consent_version: string
 consented_at: timestamp
 source_tap_device_id: uuid → TapDevice (nullable)
@@ -365,7 +364,7 @@ created_at: timestamp
 14. `ProPresenterKeyword` é sempre escopado a um campus
 15. `Destination.scope = campus` exige `campus_id`; `scope = organization` exige `campus_id = null`
 16. `GiftEntry` só pode ser alterado livremente enquanto o lote estiver `open`; após `closed`, correção exige reabertura auditada
-17. Submissão pastoral anônima não cria `Person`
+17. Nenhuma submissão pastoral cria ou atualiza `Person` no escopo atual
 18. Toda entidade operacional carrega `organization_id` e, quando fizer sentido, `campus_id`
 19. Nenhuma FK pode permitir referência cruzada entre organizações; usar FK composta ou validação transacional
 20. CPF e credenciais de gateway são criptografados em repouso
@@ -392,25 +391,14 @@ type TapFinanceEvent = {
 }
 ```
 
-### Intake publicado para Pessoas
+### Integração futura com Pessoas
 
-```typescript
-type TapPersonIntake = {
-  event_id: string
-  schema_version: 1
-  organization_id: string
-  campus_id: string
-  source: 'tap'
-  form_submission_id: string
-  consent_version: string
-  fields: {
-    name?: string
-    email?: string
-    phone?: string
-    cpf?: string
-    neighborhood?: string
-  }
-}
-```
+No escopo atual, TAP não publica evento de intake para Pessoas e não cria, atualiza ou enriquece cadastro de Pessoas/visitantes.
 
-O módulo Pessoas retorna `matched`, `created`, `needs_review` ou `anonymous`. TAP não decide deduplicação sozinho.
+Se Pessoas voltar ao escopo, a integração deve ser especificada em contrato próprio antes da implementação, incluindo:
+- evento/API de intake;
+- consentimento e finalidade;
+- campos permitidos;
+- regras de match e revisão de duplicidade;
+- retorno esperado;
+- auditoria e retenção.

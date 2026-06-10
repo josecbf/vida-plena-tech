@@ -64,7 +64,7 @@ O módulo só deve entrar em desenvolvimento quando cumprir todos os itens abaix
 
 - Todos os bloqueadores B-01 a B-12 resolvidos no PRD, modelo conceitual, permissões e backlog técnico.
 - Modelo de dados com invariantes, chaves únicas, escopo de tenant/campus e política de retenção.
-- Contratos com Pessoas, Financeiro, Comunicação, Eventos e GCs especificados por evento/API.
+- Contrato com Financeiro especificado por evento/API; Pessoas, Eventos e GCs apenas quando voltarem ao escopo de integração.
 - Fluxo de pagamento Pix com idempotência, expiração, retry, conciliação e recibo.
 - Fluxo de consentimento LGPD definido para formulários pastorais e dados financeiros identificáveis.
 - ProPresenter especificado por campus, máquina, versão suportada, assinatura do app e modo de falha.
@@ -313,7 +313,7 @@ Trocar destino, editar gateway, exportar doações, ver submissão pastoral, faz
 | LP-06 | Fundo padrão quando há múltiplos fundos | Regra de seleção e ordenação |
 | LP-07 | Como lidar com menor de idade em formulário pastoral? | Campo de idade/responsável quando aplicável |
 | LP-08 | Pedido de oração pode ser anônimo? | Sim, e não cria Pessoa |
-| LP-09 | Formulário de célula deve ir para GCs ou Pessoas? | Contrato de roteamento |
+| LP-09 | Formulário de célula deve ir para GCs ou Pessoas? | Fora do escopo atual; manter como registro operacional TAP até contrato futuro |
 | LP-10 | Inscrição de evento é link externo ou integração nativa? | Definir v1 e futuro |
 | LP-11 | Comunicação pode ver analytics agregados? | Sim/não e quais métricas |
 | LP-12 | Dashboard mostra valor financeiro para pastor/owner? | Permissão explícita |
@@ -340,7 +340,7 @@ Trocar destino, editar gateway, exportar doações, ver submissão pastoral, faz
 | LT-08 | Sem migration checklist RLS | Toda tabela operacional com policy no mesmo PR |
 | LT-09 | Sem secret management do Electron | Token nunca salvo em texto puro |
 | LT-10 | Sem assinatura de webhook do ProPresenter app | Token bearer é insuficiente sem rotação e escopo |
-| LT-11 | Sem normalização de telefone/CPF/e-mail | Necessário para match com Pessoas |
+| LT-11 | Sem normalização de telefone/CPF/e-mail | Necessário apenas se integração futura com Pessoas voltar ao escopo |
 | LT-12 | Sem política de criptografia campo a campo | CPF, credenciais e possivelmente payload pastoral |
 | LT-13 | Sem testes de autorização por papel/escopo | Matriz precisa virar teste |
 | LT-14 | Sem estratégia de backup/restore para dados financeiros | Teste de restauração obrigatório |
@@ -402,9 +402,9 @@ Assinatura vence antes do culto de domingo. O sistema não pode quebrar TAP púb
 
 Usuário de comunicação aponta destino para domínio falso de pagamento. Sistema deve alertar, logar e permitir política de bloqueio por admin.
 
-### Cenário 9 — Pessoa duplicada
+### Cenário 9 — Pessoa duplicada (futuro)
 
-Três formulários chegam como "Maria", "Maria Silva", "+55 11 99999-9999". Sistema não pode criar três pessoas sem revisão quando há evidência de match.
+Três formulários chegam como "Maria", "Maria Silva", "+55 11 99999-9999". No escopo atual, TAP registra submissões operacionais e não cria Pessoas. Se integração futura com Pessoas voltar ao escopo, o sistema não pode criar três pessoas sem revisão quando há evidência de match.
 
 ### Cenário 10 — Reembolso parcial
 

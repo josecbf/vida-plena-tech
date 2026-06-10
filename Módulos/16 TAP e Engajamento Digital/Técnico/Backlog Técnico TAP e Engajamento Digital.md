@@ -34,8 +34,8 @@ tags:
 - [ ] `AuditLog` obrigatório para ações sensíveis
 - [ ] Contrato `tap.donation.confirmed` com Financeiro
 - [ ] Contrato `tap.gift_entry.created` e `tap.gift_batch.closed` com Financeiro
-- [ ] Contrato `tap.person_intake.submitted` com Pessoas
-- [ ] Normalização de telefone, e-mail e CPF antes de intake
+- [ ] Decisão documentada de não publicar intake para Pessoas no escopo atual
+- [ ] Registros operacionais de formulários sem criação de cadastro de Pessoas/visitantes
 - [ ] Política de retenção de `TapEvent`, `Donation`, `GiftEntry` e `PastoralFormSubmission`
 
 ### FT-02 — Redirect Engine

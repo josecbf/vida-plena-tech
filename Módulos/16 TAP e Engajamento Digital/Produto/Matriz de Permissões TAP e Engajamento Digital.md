@@ -92,7 +92,7 @@ Admin operacional não vê doações individualizadas por padrão. Se uma igreja
 | Ver submissão de visitante | ✅ | ⚠️ | ❌ | ❌ | ✅ | ❌ |
 | Ver pedido de oração | ⚠️ | ❌ | ❌ | ❌ | ✅ | ❌ |
 | Ver decisão/batismo | ⚠️ | ❌ | ❌ | ❌ | ✅ | ❌ |
-| Encaminhar para Pessoas/GCs | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ |
+| Encaminhar para equipe responsável | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ |
 | Exportar submissões pastorais | ✅ | ❌ | ❌ | ❌ | ⚠️ | ❌ |
 | Excluir/anonimizar submissão | ✅ | ❌ | ❌ | ❌ | ⚠️ | ❌ |
 
@@ -125,8 +125,8 @@ Leitura de pedido de oração, decisão e batismo gera `AuditLog` obrigatório.
 ## Dados do visitante final
 
 O visitante que toca o TAP **não cria conta e não faz login**. Seus dados (se informados) são:
-- Nome, e-mail, telefone em formulários pastorais → encaminhados ao módulo Pessoas
-- Nome, e-mail e CPF para recibo de doação → usados para recibo, relatório anual e vínculo voluntário com Pessoa quando houver consentimento
+- Nome, e-mail, telefone em formulários pastorais → ficam como registro operacional do TAP no escopo atual
+- Nome, e-mail e CPF para recibo de doação → usados para recibo e relatório anual quando aplicável
 - Dados de pagamento → nunca armazenados na plataforma — processados pelo gateway
 
 O TAP registra apenas: timestamp do tap, device-id, destination-id. Nenhum dado pessoal do visitante é coletado automaticamente pelo redirect.

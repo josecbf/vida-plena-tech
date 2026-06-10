@@ -71,7 +71,8 @@ Este módulo não substitui o módulo Financeiro. Ele captura a intenção e o p
 - Gift entry — lançamento manual de doações físicas (dinheiro, cheque, Pix fora da plataforma)
 - Gateway abstrato — MVP com Mercado Pago/Pix; Stripe e Asaas em fases posteriores
 - Dashboard de engajamento: taps por grupo, destino mais acessado, doações por fundo, por período
-- Contratos de domínio com Financeiro e Pessoas
+- Contrato de domínio com Financeiro
+- Pessoas apenas como integração futura, após contrato próprio
 - Consentimento LGPD e auditoria para dados sensíveis
 
 ---
@@ -80,7 +81,7 @@ Este módulo não substitui o módulo Financeiro. Ele captura a intenção e o p
 
 | Módulo | Como se conecta |
 |--------|----------------|
-| Pessoas | Identifica doador recorrente; vincula formulário pastoral a pessoa existente |
+| Pessoas | Integração futura para vínculo com cadastro canônico, fora do escopo atual |
 | Financeiro | Emite evento de doação confirmada para consolidação e prestação de contas |
 | Eventos | Destino de inscrição de evento gerenciado pelo módulo Eventos |
 | Comunicação | Dispara confirmação de doação e recibo automático |
@@ -104,4 +105,4 @@ Este módulo não substitui o módulo Financeiro. Ele captura a intenção e o p
 
 ## Próximo gate
 
-Antes de codar, executar o checklist do stress test em [[Stress Test - TAP e Engajamento Digital]] e garantir que os contratos com Financeiro e Pessoas foram aceitos pelos respectivos módulos.
+Antes de codar o MVP comercial, executar o checklist do stress test em [[Stress Test - TAP e Engajamento Digital]] e garantir que o contrato com Financeiro foi aceito. Integração com Pessoas exige decisão e contrato próprios em fase futura.
