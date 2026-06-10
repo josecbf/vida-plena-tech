@@ -115,6 +115,7 @@ export const TRILHAS: Trilha[] = [
 // Matrículas mock — ligam Pessoas ao Ensino (progresso)
 export const MATRICULAS: Matricula[] = [
   { pessoaId: "p6", cursoId: "c_primeiros_passos", aulasConcluidas: ["a1", "a2"] },
+  { pessoaId: "p6", cursoId: "c_batismo", aulasConcluidas: [] },
   { pessoaId: "p10", cursoId: "c_primeiros_passos", aulasConcluidas: ["a1"] },
   { pessoaId: "p5", cursoId: "c_fundamentos", aulasConcluidas: ["a1", "a2", "a3", "a4", "a5"] },
   { pessoaId: "p5", cursoId: "c_lider_gc", aulasConcluidas: ["a1", "a2"] },

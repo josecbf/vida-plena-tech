@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { Shell } from "@/components/shell";
+import { AppProvider } from "@/components/app-context";
 
 export const metadata: Metadata = {
   title: "Videira — Plataforma para Igrejas",
@@ -19,7 +20,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body>
-        <Shell>{children}</Shell>
+        <AppProvider>
+          <Shell>{children}</Shell>
+        </AppProvider>
       </body>
     </html>
   );
