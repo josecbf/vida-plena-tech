@@ -98,6 +98,18 @@ tags:
 - Como admin, quero configurar duração do override manual, para evitar que o TAP fique preso em um destino antigo.
 - Como admin, quero exigir aprovação para URL externa fora da política, para reduzir risco de phishing.
 
+**Critérios de aceite E04:**
+- [ ] Destino `own_page` é criado como rascunho com título, texto principal, rótulo de botão, imagem opcional e URL de botão opcional.
+- [ ] Publicação de `own_page` exige campos obrigatórios válidos e bloqueia HTML arbitrário, scripts e coleta de dados pessoais.
+- [ ] Destino `external_url` é criado como rascunho com URL absoluta `https://`.
+- [ ] Sistema bloqueia URL relativa, domínio inválido e schemes proibidos (`javascript:`, `data:`, `file:`, `mailto:`, `tel:`).
+- [ ] Painel mostra preview do domínio normalizado antes da publicação de URL externa.
+- [ ] URL externa fora da política fica pendente de aprovação ou exige permissão `tap.external_url.publish`.
+- [ ] Destinos `draft` e `inactive` não podem ser selecionados como destino ativo de grupo TAP.
+- [ ] Inativar destino usado por grupo TAP exige escolher substituto ou confirmar retorno ao destino padrão.
+- [ ] Alterar URL externa publicada executa nova validação e registra auditoria.
+- [ ] Criação, publicação, alteração sensível e despublicação de destino geram `AuditLog`.
+
 ### E05 — Painel de comunicação
 
 - Como usuário com papel "comunicação", quero ver só os destinos e o controle de ativação, sem acessar dados financeiros, para focar no meu trabalho.

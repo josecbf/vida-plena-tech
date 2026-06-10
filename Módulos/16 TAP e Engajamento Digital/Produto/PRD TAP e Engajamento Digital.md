@@ -92,6 +92,8 @@ Tipos de destino suportados na v1:
 | `external_url` | Redirect direto para URL configurada, com validação de segurança |
 | `own_page` | Landing page simples: imagem, título, texto, botão com link |
 
+No Alpha operacional, os destinos implementáveis são somente `own_page` e `external_url`. `offering`, `event_registration` e `pastoral_form` permanecem no vocabulário do produto, mas não fazem parte desta entrega.
+
 Cada destino tem:
 - Nome interno (visível só no painel)
 - Conteúdo configurável por tipo
@@ -100,6 +102,29 @@ Cada destino tem:
 - Escopo: organização inteira ou campus específico
 
 `Destination.config` não é JSON livre. Cada tipo possui schema versionado e validado antes de persistir. Alterações futuras criam nova versão de schema e migração explícita.
+
+**Destino `own_page` no Alpha:**
+- Campos obrigatórios: título, texto principal e rótulo do botão.
+- Campos opcionais: imagem, texto alternativo da imagem e URL do botão.
+- Quando houver URL no botão, ela usa as mesmas validações de URL externa.
+- A página própria é hospedada pela plataforma, não coleta dados pessoais e não cria cadastro de visitante.
+- Publicar exige conteúdo válido, sem HTML arbitrário e com tamanho dentro dos limites do editor.
+
+**Destino `external_url` no Alpha:**
+- Aceita apenas URLs `https://` absolutas.
+- Bloqueia esquemas como `javascript:`, `data:`, `file:`, `mailto:`, `tel:` e URLs relativas.
+- Normaliza a URL antes de salvar: remove espaços, aplica lowercase no host e preserva path/query.
+- Exibe preview do domínio final antes da publicação.
+- Pode usar allowlist opcional por organização; domínio fora da política exige aprovação de owner/admin ou permissão `tap.external_url.publish`.
+- Alterar a URL de um destino já publicado volta o destino para validação de publicação.
+
+**Estados e transições:**
+- `draft`: editável, não pode ser usado como destino ativo.
+- `active`: validado, publicado e elegível para grupos TAP.
+- `inactive`: preservado para histórico, mas não pode receber novos redirects.
+- `draft -> active` exige schema válido e, no caso de URL externa fora da política, aprovação.
+- `active -> inactive` é permitido somente se o destino não estiver ativo em nenhum grupo ou se o usuário escolher substituto/retorno ao destino padrão.
+- `inactive -> active` executa novamente as validações do tipo e registra auditoria.
 
 ### 4.3 Controle de destino ativo
 

@@ -104,10 +104,35 @@ Dispositivo está operacional
 
 **Capacidades:**
 - CRUD de destinos por organização
-- Suporte a cinco tipos: `offering`, `event_registration`, `pastoral_form`, `external_url`, `own_page`
+- Suporte conceitual a cinco tipos: `offering`, `event_registration`, `pastoral_form`, `external_url`, `own_page`
+- Entrega Alpha limitada a `own_page` e `external_url`
 - Editor simplificado para tipo `own_page`: upload de imagem, título, texto, botão
 - Atribuição de destino ativo a grupos TAP
 - Controle de trocas: manual, agendado, ProPresenter
+
+**Fluxo de criação e publicação de destino Alpha:**
+```
+Usuário cria destino como rascunho
+  ↓
+Seleciona tipo: own_page ou external_url
+  ↓
+Sistema valida schema do tipo e config_version
+  ↓
+Se external_url ou botão externo: valida HTTPS, scheme, domínio e política
+  ↓
+Se domínio fora da política: solicita aprovação owner/admin
+  ↓
+Publicação muda status para active
+  ↓
+AuditLog registra tipo, status anterior, status novo, usuário e campos sensíveis alterados
+```
+
+**Regras operacionais por tipo Alpha:**
+- `own_page` renderiza página própria da plataforma, com imagem opcional, título, texto e botão.
+- `own_page` não executa HTML arbitrário, scripts de terceiros ou coleta de dados pessoais.
+- `external_url` faz redirect direto somente após publicação válida.
+- URL externa publicada mostra domínio final no painel e na confirmação de publicação.
+- Alterar URL, domínio ou botão externo em destino publicado exige nova validação antes de continuar ativo.
 
 **Fluxo de troca de destino:**
 ```
@@ -125,6 +150,15 @@ Próximo tap já recebe o novo destino
 ```
 
 Toda troca de destino registra `AuditLog` com origem, usuário/token, campus, grupo, destino anterior, destino novo, duração do override e justificativa quando aplicável.
+
+**Critérios de aceite do Alpha:**
+- Comunicação cria rascunho `own_page`, preenche campos mínimos e publica após validação.
+- Admin cria rascunho `external_url` com URL `https://` válida e visualiza preview do domínio antes de publicar.
+- Sistema bloqueia URL com scheme proibido, URL relativa ou domínio inválido.
+- URL fora da política fica pendente de aprovação ou exige permissão apropriada.
+- Destino `draft` ou `inactive` não pode ser atribuído como destino ativo de grupo.
+- Inativar destino ativo em grupo exige substituto ou retorno ao destino padrão.
+- Toda publicação, alteração de URL e despublicação gera auditoria.
 
 ---
 
@@ -338,9 +372,10 @@ Confirmações e recibos são enviados por Comunicação quando houver permissã
 ## Segurança de URL externa
 
 Destino `external_url` exige:
-- URL HTTPS, exceto ambiente local/dev.
-- Bloqueio de protocolos perigosos.
-- Preview do domínio antes de publicar.
-- Alerta visual quando domínio não pertence à organização.
+- URL absoluta `https://`, exceto ambiente local/dev.
+- Bloqueio de protocolos perigosos: `javascript:`, `data:`, `file:`, `mailto:` e `tel:`.
+- Normalização e preview do domínio antes de publicar.
+- Alerta visual quando domínio não pertence à política da organização.
 - Política opcional de allowlist por organização.
-- Auditoria ao publicar ou alterar URL externa.
+- Aprovação owner/admin ou permissão `tap.external_url.publish` para publicar fora da política.
+- Auditoria ao publicar, alterar URL, aprovar exceção ou despublicar URL externa.
