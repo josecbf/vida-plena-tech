@@ -271,15 +271,27 @@ Comunicação recebe eventos de confirmação quando houver e-mail/telefone auto
 
 Todo dado pessoal coletado pelo módulo deve ter finalidade explícita.
 
-| Dado | Finalidade | Retenção conceitual |
-|---|---|---|
-| TapEvent sem identificação | Analytics operacional | 12 meses bruto; agregado após isso |
-| Donation identificada | Recibo, prestação de contas e histórico financeiro | Conforme obrigação financeira/contábil |
-| GiftEntry | Prestação de contas e conciliação | Conforme obrigação financeira/contábil |
-| Formulário pastoral | Acompanhamento pastoral solicitado | Política da igreja, com revisão periódica |
-| Consentimento | Prova de autorização e revogação | Enquanto necessário para comprovação |
+| Fluxo / dado | Dados coletados | Finalidade | Sensibilidade | Quem acessa | Retenção conceitual |
+|---|---|---|---|---|---|
+| TapEvent sem identificação | device-id, destination-id, timestamp, IP/user-agent hasheados | Analytics operacional, abuso e saúde do redirect | Operacional comum/restrito | Admin, comunicação e viewer em agregado | 12 meses bruto; agregado/anônimo após isso |
+| Doação Pix anônima | valor, fundo, método, gateway, status | Confirmação operacional e evento financeiro | Financeiro sensível sem identificação pessoal | Financeiro e owner; admin só agregado | Conforme obrigação contábil/fiscal via Financeiro |
+| Doação identificada | nome, e-mail, CPF criptografado, valor, fundo, gateway | Recibo, relatório anual e prestação de contas | Financeiro sensível | Financeiro e owner; leitura auditada | Conforme obrigação contábil/fiscal via Financeiro |
+| GiftEntry | valor, fundo, método físico/externo, data, operador, observação | Prestação de contas e conciliação de culto | Financeiro sensível | Financeiro e owner; admin apenas lançamento em lote aberto quando permitido | Conforme obrigação contábil/fiscal via Financeiro |
+| Formulário de visitante | nome, telefone, e-mail, bairro e interesses | Acompanhamento solicitado pela pessoa | Operacional restrito | Pastoral e owner; admin apenas se autorizado | Política da igreja, com revisão periódica |
+| Pedido de oração | nome opcional e texto livre de oração | Cuidado pastoral solicitado | Pastoral confidencial | Pastoral e owner; leitura auditada | Política da igreja, com revisão periódica e minimização |
+| Decisão/batismo | nome, contato e tipo de decisão | Acompanhamento pastoral solicitado | Pastoral confidencial | Pastoral e owner; leitura auditada | Política da igreja, com revisão periódica |
+| Inscrição em célula | nome, telefone, bairro/região, disponibilidade | Encaminhamento operacional para equipe responsável | Operacional restrito | Pastoral/equipe responsável e owner | Política da igreja, com revisão periódica |
+| Consentimento | versão do texto, finalidade, aceite, timestamp, origem | Prova de autorização e revogação | Operacional restrito | Admin autorizado, owner e auditoria | Enquanto necessário para comprovação |
 
-Ações sensíveis exigem `AuditLog`: visualizar submissão pastoral, exportar doações, alterar gateway, trocar destino ao vivo, reembolsar, fechar lote e alterar permissões.
+Regras obrigatórias:
+- Todo formulário pastoral exige consentimento explícito antes do envio.
+- O texto de consentimento registra finalidade, retenção, compartilhamento interno e canal de contato da igreja.
+- Comunicação não acessa conteúdo individual de formulários pastorais nem doações identificadas.
+- Financeiro não acessa pedidos de oração, decisão, batismo ou conteúdo pastoral sensível.
+- Pastoral não acessa doações individualizadas, CPF, gateway ou exportações financeiras.
+- Owner pode ter acesso amplo, mas leitura de dado pastoral sensível ou financeiro identificado continua auditada.
+
+Ações sensíveis exigem `AuditLog`: visualizar submissão pastoral sensível, exportar submissões, exportar doações, visualizar doação identificada, visualizar CPF/e-mail de doador, alterar gateway, rotacionar credenciais, trocar destino ao vivo, reembolsar, fechar/reabrir lote, alterar permissões e executar anonimização/exclusão.
 
 ---
 

@@ -98,6 +98,13 @@ Admin operacional não vê doações individualizadas por padrão. Se uma igreja
 
 Leitura de pedido de oração, decisão e batismo gera `AuditLog` obrigatório.
 
+Regras de segregação:
+- `comunicacao` vê contagens e opera destinos, mas não acessa conteúdo individual de formulário pastoral.
+- `financeiro` opera doações e Gift Entry, mas não acessa conteúdo pastoral.
+- `pastoral` acessa submissões pastorais no escopo autorizado, mas não vê doações individualizadas nem CPF de doador.
+- `admin` operacional não herda acesso sensível por padrão; precisa de permissão explícita adicional.
+- `owner` pode ter acesso amplo, mas leitura sensível continua auditada.
+
 ### Configurações
 
 | Ação | owner | admin | comunicacao | financeiro | pastoral | viewer |
@@ -149,7 +156,24 @@ O TAP registra apenas: timestamp do tap, device-id, destination-id. Nenhum dado 
 | `tap.form_submission.view` | Ver submissões não sensíveis |
 | `tap.form_submission.view_sensitive` | Ver submissões pastorais sensíveis |
 | `tap.form_submission.export` | Exportar submissões pastorais |
+| `tap.form_submission.anonymize` | Anonimizar/excluir submissões quando cabível |
 | `tap.gateway.manage` | Configurar gateway |
 | `tap.gateway.rotate_secret` | Rotacionar credenciais |
 | `tap.propresenter.manage` | Configurar app, token e keywords |
 | `tap.audit.view` | Ver logs auditáveis do módulo |
+
+## Ações auditáveis obrigatórias
+
+| Ação | Motivo |
+|---|---|
+| Visualizar pedido de oração, decisão ou batismo | Dado pastoral confidencial |
+| Exportar submissões pastorais | Risco de extração em massa |
+| Visualizar doação identificada, CPF ou e-mail de doador | Dado financeiro sensível |
+| Exportar relatório financeiro | Prestação de contas e risco de vazamento |
+| Criar, fechar ou reabrir lote de Gift Entry | Integridade financeira |
+| Solicitar, aprovar ou executar reembolso | Integridade financeira |
+| Alterar gateway ou rotacionar segredo | Segurança e risco financeiro |
+| Trocar destino ativo ao vivo | Impacto operacional durante culto |
+| Publicar URL externa fora da política | Risco de phishing |
+| Alterar permissões sensíveis | Escalada de acesso |
+| Anonimizar, excluir ou bloquear dado pessoal | Direito do titular e rastreabilidade |
