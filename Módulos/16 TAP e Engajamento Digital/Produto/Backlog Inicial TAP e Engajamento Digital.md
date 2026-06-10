@@ -90,6 +90,20 @@ tags:
 - Como sistema, quero aplicar rate limit e marcar tráfego suspeito, para evitar analytics contaminado por automação.
 - Como admin, quero ver uma página de contingência quando um dispositivo estiver inativo ou sem destino, para não expor erro técnico ao visitante.
 
+**Critérios de aceite E03:**
+- [ ] `GET /t/{device-id}` resolve dispositivo, grupo e destino ativo sem exigir login do visitante.
+- [ ] Redirect de sucesso retorna `302` para destino publicado e válido.
+- [ ] Cache hit não consulta banco e mantém p95 abaixo de 200ms em 500 requisições simultâneas.
+- [ ] Cache miss consulta banco com timeout curto e atualiza cache quando a resolução for válida.
+- [ ] Troca de destino invalida cache para que o próximo tap use o destino novo.
+- [ ] Analytics é assíncrono e falha de `TapEvent` não bloqueia redirect.
+- [ ] `TapEvent` não registra nome, e-mail, telefone, CPF ou identificador persistente de visitante.
+- [ ] Device inexistente, inativo ou arquivado mostra contingência sem revelar detalhe técnico.
+- [ ] Grupo inativo, sem destino ativo ou com destino inválido usa destino padrão válido ou página "Conteúdo em breve".
+- [ ] Destino `draft`, `inactive`, `archived`, inválido ou externo reprovado não recebe redirect público.
+- [ ] Rate limit marca tráfego suspeito sem contaminar analytics limpo e sem revelar se o device-id existe.
+- [ ] Falha de cache ou banco degrada para banco, último destino válido ou contingência, nessa ordem.
+
 ### E04 — Destinos básicos
 
 - Como comunicação, quero criar um destino do tipo "página própria" com imagem, título, texto e botão, para preparar a tela de uma campanha ou evento.

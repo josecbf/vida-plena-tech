@@ -210,25 +210,86 @@ Registra AuditLog e exibe confirmação visual
 - Detecção de anomalia por volume e origem
 - Inserção de analytics fora do caminho crítico do redirect
 
-**Fluxo de um tap:**
+**Contrato público do endpoint:**
+- Rota: `GET /t/{device-id}`.
+- `device-id` é o identificador público não enumerável de `tap_devices.public_id`.
+- O endpoint não exige login, cookie ou sessão.
+- O endpoint não lê nem persiste nome, e-mail, telefone, CPF ou qualquer dado pessoal informado pelo visitante.
+- Parâmetros de campanha só podem ser aceitos se estiverem em allowlist técnica e não podem conter dados pessoais.
+- Resposta de sucesso usa redirect HTTP `302` para URL própria da plataforma ou URL externa publicada.
+- Resposta de contingência renderiza página pública da plataforma, sem stack trace, payload técnico ou informação de tenant além da marca pública permitida.
+
+**Fluxo completo `GET /t/{device-id}`:**
 ```
 Celular toca moeda NFC
   ↓
-Abre URL do dispositivo (ex: /t/abc123)
+Abre URL pública do dispositivo (ex: /t/abc123)
   ↓
-Edge Function consulta cache (< 5ms)
+Edge Function valida formato do device-id
+  ↓
+Aplica rate limit leve por IP + device-id
+  ↓
+Resolve device-id no cache de dispositivo/grupo/destino
   ↓ [cache hit]
-302 redirect para URL do destino ativo
+Valida status do dispositivo, grupo e destino
+  ↓
+Enfileira TapEvent de forma assíncrona
+  ↓
+302 redirect para URL resolvida do destino ativo
   ↓
 Celular abre destino (tela de oferta, formulário, etc.)
 ```
 
-**Falhas e fallback:**
-- Device inexistente ou inativo: página segura de "TAP indisponível".
-- Grupo sem destino ativo: página padrão da organização/campus.
-- Destino inativo: retorna destino padrão ou página de contingência.
-- Cache indisponível: consulta banco com timeout curto.
-- Banco indisponível: usa último destino cacheado se ainda válido; caso contrário, página de contingência.
+**Resolução de destino:**
+1. Validar se `device-id` tem formato esperado; se não tiver, responder contingência genérica.
+2. Buscar `tap:device:{public_id}` no cache com dados mínimos: device, grupo, campus, organização, destino ativo, destino padrão e versão.
+3. Em cache hit, validar status `active` do dispositivo e grupo.
+4. Em cache miss, consultar o banco com timeout curto e preencher o cache.
+5. Se o grupo tiver `current_destination_id`, resolver esse destino.
+6. Se não houver destino ativo, tentar `default_destination_id` do grupo.
+7. Se destino ativo ou padrão estiver `draft`, `inactive`, `archived`, inválido ou fora da política, servir contingência.
+8. Em qualquer troca de destino, invalidar a chave do grupo e atualizar a próxima leitura.
+
+**Cache e fallback:**
+- Cache principal guarda a resolução ativa por grupo/dispositivo com TTL de 10 segundos.
+- Cache de último destino válido pode ser mantido separadamente por até 5 minutos apenas para degradação controlada.
+- Cache hit deve evitar consulta ao banco.
+- Cache miss consulta banco com timeout curto, preferencialmente abaixo de 100ms.
+- Cache indisponível aciona consulta direta ao banco.
+- Banco indisponível pode usar último destino válido se ele ainda estiver dentro da janela de degradação e não tiver sido invalidado por status conhecido.
+- Se cache e banco falharem sem último destino válido, responder página de contingência.
+
+**TapEvent e analytics:**
+- O redirect nunca espera a gravação de analytics para responder ao visitante.
+- O evento é enviado por fila, outbox, `waitUntil()` ou mecanismo equivalente compatível com Edge Runtime.
+- Falha de gravação do evento não altera a resposta do redirect.
+- `TapEvent` registra dados operacionais mínimos: timestamp, organization_id, campus_id, group_id, device_id, destination_id resolvido, status do resultado, motivo de contingência quando houver e metadados técnicos agregáveis.
+- Não registrar nome, e-mail, telefone, CPF, texto livre, cookie identificador de pessoa ou fingerprint persistente de visitante.
+- IP e user agent, se usados para segurança/rate limit, devem ser tratados como dado técnico de curta retenção, preferencialmente truncado, hash efêmero ou agregado.
+
+**Rate limit e tráfego suspeito:**
+- Aplicar limite leve por combinação de IP de origem e `device-id`, sem exigir identificação do visitante.
+- O limite não deve derrubar culto real por pico legítimo; ao exceder, pode reduzir analytics, marcar suspeito ou servir contingência controlada conforme severidade.
+- Marcar como suspeito quando houver volume muito acima do esperado para um dispositivo, alta frequência de erro por device-id inexistente ou padrão de enumeração.
+- Requisições suspeitas não contam como engajamento limpo no dashboard sem agregação/filtragem.
+- Rate limit deve retornar resposta previsível, sem revelar se o device-id existe.
+
+**Páginas de contingência:**
+- Device inexistente, inativo ou arquivado: página "TAP indisponível" com mensagem curta e sem detalhes técnicos.
+- Grupo inativo, arquivado ou sem campus válido: página "TAP indisponível".
+- Grupo sem destino ativo e sem destino padrão: página "Conteúdo em breve" da organização/campus quando houver marca pública; caso contrário, contingência genérica.
+- Destino inativo, rascunho, arquivado, inválido ou externo reprovado: tentar destino padrão válido; se não existir, contingência.
+- Cache indisponível com banco disponível: resolver pelo banco e não expor falha.
+- Banco indisponível com último destino válido: redirecionar para último destino válido dentro da janela de degradação.
+- Banco indisponível sem último destino válido: contingência genérica.
+
+**Critérios de performance e degradação:**
+- Meta de experiência: visitante abrir o destino ativo em menos de 2 segundos, incluindo rede móvel comum.
+- Meta técnica do endpoint: p95 abaixo de 200ms para 500 requisições simultâneas em cache hit.
+- Cache hit não pode depender de SDK de gateway, consulta financeira, renderização pesada ou gravação síncrona de analytics.
+- Cache miss deve ter timeout explícito e degradação previsível.
+- Teste de carga deve cobrir 500 requisições simultâneas e cenários estendidos de 2.000 e 10.000 taps simulados.
+- O resultado de carga deve separar redirects limpos, contingências esperadas, rate limits e falhas reais.
 
 ---
 
