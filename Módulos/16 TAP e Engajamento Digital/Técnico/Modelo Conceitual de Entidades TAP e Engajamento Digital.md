@@ -153,10 +153,15 @@ organization_id: uuid → Organization
 name: string (interno)
 type: offering | event_registration | pastoral_form | own_page | external_url
 status: draft | active | inactive
+approval_status: not_required | pending | approved | rejected
 scope: organization | campus
 campus_id: uuid → Campus (nullable; obrigatório quando scope = campus)
 config_version: integer
 config: jsonb (estrutura validada por schema do tipo + versão)
+published_at: timestamp (nullable)
+published_by: uuid → User (nullable)
+approved_at: timestamp (nullable)
+approved_by: uuid → User (nullable)
 created_at, updated_at: timestamp
 ```
 
@@ -179,11 +184,30 @@ created_at, updated_at: timestamp
 
 // own_page
 {
-  image_url: string,
   title: string,
   body: string,
   button_label: string,
-  button_url: string
+  button_url?: string,
+  image_url?: string,
+  image_alt?: string
+}
+```
+
+**Validações `own_page` v1:**
+- `title`, `body` e `button_label` são obrigatórios para publicação.
+- `button_url`, quando informado, usa as mesmas regras de `external_url`.
+- Não permite HTML arbitrário, scripts embutidos ou coleta de dados pessoais.
+- Imagem é opcional; quando houver imagem, `image_alt` é recomendado.
+
+```typescript
+// own_page v1 - exemplo válido
+{
+  title: string,
+  body: string,
+  button_label: string,
+  button_url?: "https://forms.exemplo.org/inscricao",
+  image_url?: "https://cdn.plataforma.com.br/tap/campanha.png",
+  image_alt?: "Arte da campanha"
 }
 
 // pastoral_form
@@ -203,9 +227,24 @@ created_at, updated_at: timestamp
 
 // external_url
 {
-  url: string
+  url: string,
+  normalized_url: string,
+  domain: string,
+  policy_status: allowed | requires_approval | blocked,
+  preview_title?: string,
+  preview_description?: string,
+  approval_reason?: string
 }
 ```
+
+**Validações `external_url` v1:**
+- `url` deve ser absoluta e usar `https://`.
+- `normalized_url` é a versão persistida após trim, normalização do host e validação de parse.
+- `domain` é extraído da URL normalizada e exibido no preview de publicação.
+- `policy_status = blocked` impede publicação.
+- `policy_status = requires_approval` exige owner/admin ou permissão `tap.external_url.publish`.
+- Schemes `javascript:`, `data:`, `file:`, `mailto:`, `tel:` e URLs relativas são inválidos.
+- Alterar `url`, `normalized_url` ou `domain` em destino publicado exige nova validação e auditoria.
 
 ### ProPresenterKeyword
 ```
