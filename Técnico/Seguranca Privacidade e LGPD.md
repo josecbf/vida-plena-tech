@@ -110,3 +110,14 @@ Quando IA usar dado de nivel 3, 4 ou 5, registrar finalidade, usuario, escopo, r
 | Notas pastorais | revisar periodicamente | acesso restrito e possibilidade de minimizacao |
 | Financeiro | conforme obrigacao contabil/fiscal | exportacao e auditoria controladas |
 | Logs tecnicos | prazo curto e finalidade clara | sem payload sensivel sempre que possivel |
+
+## Regras especificas para TAP e Engajamento Digital
+
+- `TapEvent` bruto deve ser tratado como analytics operacional: reter por 12 meses e depois manter apenas agregado/anônimo.
+- Doações e Gift Entry seguem obrigação contábil/fiscal via módulo Financeiro.
+- Formulários pastorais do TAP exigem consentimento explícito, texto versionado, finalidade clara e revisão periódica de retenção.
+- Pedido de oração, decisão e batismo são dados pastorais confidenciais e exigem auditoria de leitura.
+- Comunicação não acessa conteúdo individual pastoral nem doações identificadas.
+- Financeiro não acessa conteúdo pastoral.
+- Pastoral não acessa dados financeiros individualizados.
+- Owner pode acessar dados sensíveis quando necessário, mas a leitura continua auditada.
