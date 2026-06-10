@@ -62,6 +62,18 @@ pnpm --filter @videira/demo build # valida produção
 - `agents/` + `.claude/agents/` — agentes de IA
 - `ze-start.md`, `CLAUDE-ZE.md` — controle
 
+## Frente de arquitetura (em discussão)
+
+Requisito novo: módulos satélites (ex.: **Ensino 02**) precisam ser **contratados isoladamente** e **plugados em outra plataforma** que traz as pessoas — sem quebrar a regra de ouro (Pessoas é o centro).
+
+- Modelo proposto: **identidade plugável** — módulos dependem de um contrato `PeopleProvider`/`PersonRef`, não do módulo Pessoas. Três providers: **Native** (Pessoas 01), **External/Federado** (anti-corruption + SSO/SCIM/webhooks), **Lite** (mínimo embarcado). Seleção por feature flag por tenant. Documento: `docs/Técnico/Modularidade e Identidade Plugavel.md`.
+- Costura já existe na demo: `Matricula.pessoaId` em `packages/types`.
+- Validação externa: prompt pronto para Gemini e GPT em `docs/Técnico/Prompt - Validacao de Arquitetura (Gemini e GPT).md`. Próximo: rodar nos dois, comparar e registrar divergências como ADR.
+
+## Pendente: Módulo 16
+
+O usuário vai trazer a documentação de um **novo módulo 16** (fonte ainda não fornecida — paste/arquivo/Drive). Quando chegar: criar `docs/Módulos/16 <Nome>/` no mesmo formato dos outros (Estratégia/Produto/Técnico + Hub) e entender o módulo. Atualizar README e `000 - Hub.md`.
+
 ---
 
 ## Como retomar (checklist para o próximo chat)
@@ -81,3 +93,4 @@ git pull --ff-only   # se houver remoto
 ## Histórico de sessões
 
 - **2026-06-09:** Sessão inicial. Decisões (monorepo/Videira/demo mock). Criados `ze-start.md` e `CLAUDE-ZE.md`. **Fases 0, 1, 2, 3 concluídas:** reorg+monorepo (`e84840a`), 10 agentes de IA (`e4fb42b`), design system + demo Pessoas/Ensino com build validado. Falta deploy manual na Vercel.
+- **2026-06-10:** Área do aluno (`742f27b`), README com instruções de rodar local (`ee9fa19`), branch `ze-start` publicada no GitHub (`origin`). Iniciada **frente de arquitetura** (identidade plugável para Ensino standalone/embarcável) + prompt de validação Gemini/GPT. **Pendente:** receber doc do módulo 16.

@@ -106,3 +106,19 @@ videira/  (este repo)
 1. Fase 0 (reorg + scaffold) — em andamento
 2. Fase 2 (agentes) — destrava trabalho paralelo
 3. Fase 1 + Fase 3 (identidade + demo)
+
+---
+
+## Frentes adicionais (10/06)
+
+### Fase 5 — Arquitetura: modularidade e identidade plugável
+Permitir que módulos satélites (ex.: Ensino 02) sejam contratados isolados e plugados em outra plataforma que traz as pessoas.
+- [x] Modelo de arquitetura documentado (`docs/Técnico/Modularidade e Identidade Plugavel.md`)
+- [x] Prompt de validação para Gemini e GPT (`docs/Técnico/Prompt - Validacao de Arquitetura (Gemini e GPT).md`)
+- [ ] Rodar validação nos dois, comparar e registrar divergências como ADR
+- [ ] Aprovar contrato `PersonRef`/`PeopleProvider` e protocolo de federação
+
+### Fase 6 — Módulo 16 (novo)
+- [ ] Receber a documentação do módulo 16 (fonte do usuário)
+- [ ] Criar `docs/Módulos/16 <Nome>/` no mesmo formato (Estratégia/Produto/Técnico + Hub)
+- [ ] Atualizar `docs/000 - Hub.md` e README com o novo módulo
