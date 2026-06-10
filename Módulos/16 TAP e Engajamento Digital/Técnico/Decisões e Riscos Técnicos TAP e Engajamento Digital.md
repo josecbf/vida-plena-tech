@@ -136,6 +136,30 @@ tags:
 
 ---
 
+## ADR-11 — TAP não é ledger contábil oficial
+
+**Contexto:** O módulo TAP facilita doações e Gift Entry, mas não deve criar uma segunda fonte de verdade financeira. A auditoria identificou risco de dupla contabilidade caso TAP e Financeiro emitam relatórios oficiais independentes.
+
+**Decisão:** TAP mantém staging operacional da origem da doação e publica eventos idempotentes para Financeiro. O módulo Financeiro é a fonte oficial para conciliação, relatórios contábeis, prestação de contas e visão financeira consolidada.
+
+**Motivação:** Preserva separação de responsabilidades: TAP otimiza o momento de engajamento; Financeiro governa consistência contábil, conciliação e prestação de contas.
+
+**Consequência:** Dashboards financeiros do TAP são operacionais e devem ser rotulados como não oficiais quando exibirem dados ainda não consolidados pelo Financeiro. Pix, webhook, reembolso e Gift Entry dependem de contrato financeiro aceito antes do MVP comercial.
+
+---
+
+## ADR-12 — Eventos financeiros do TAP usam outbox/inbox
+
+**Contexto:** Webhooks de gateway podem ser duplicados, atrasados ou entregues fora de ordem. Gift Entry também pode ser corrigido por reabertura de lote.
+
+**Decisão:** TAP publica `tap.donation.confirmed`, `tap.donation.failed`, `tap.donation.refunded`, `tap.gift_entry.created` e `tap.gift_batch.closed` via outbox. Financeiro consome via inbox, com idempotência por `event_id` e `idempotency_key`.
+
+**Motivação:** Garante que eventos financeiros possam ser reprocessados sem duplicar receita, lançamento, relatório ou conciliação.
+
+**Consequência:** Toda confirmação financeira precisa gravar a alteração operacional e o evento na mesma transação. Se publicação falhar, o evento permanece pendente para retry. Financeiro deve tratar reenvio conhecido como sucesso idempotente.
+
+---
+
 ## Riscos técnicos abertos
 
 ### RT-01 — Latência do ProPresenter → backend em redes lentas
