@@ -39,7 +39,7 @@ Antes de qualquer trabalho, ler:
 000 - Hub.md              ← ponto de entrada; leia sempre que precisar se orientar
 PRELIMINARES/             ← visão, princípios e referências de mercado
 Produto/                  ← mapa de módulos, roadmap, modelo comercial, MVP
-Módulos/                  ← documentação detalhada de cada módulo (15 módulos)
+Módulos/                  ← documentação detalhada de cada módulo (16 módulos)
 Técnico/                  ← arquitetura, dados, segurança, LGPD, permissões, APIs, IA
 Operacao/                 ← jornadas operacionais da igreja
 Squads/                   ← equipe, papéis, plano de squads

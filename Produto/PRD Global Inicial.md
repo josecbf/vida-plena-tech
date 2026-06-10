@@ -64,8 +64,10 @@ O MVP da plataforma nao e "todos os modulos prontos". O MVP correto e uma fundac
 Inclui:
 
 - tenant;
+- membership de usuario por tenant;
 - usuarios;
 - permissoes;
+- escopos por campus, ministerio, GC, area e papel;
 - pessoas;
 - familias;
 - timeline;
@@ -76,6 +78,43 @@ Inclui:
 - integrações basicas;
 - design system;
 - relatorios iniciais.
+
+## Gates de execucao
+
+### Gate 0 - Contratos globais
+
+Nenhum modulo pode iniciar desenvolvimento antes de aceitar os contratos globais:
+
+- `Person` canonico e fluxo de deduplicacao.
+- `TenantMembership`, `RoleAssignment`, `UserScope` e permissoes deny-by-default.
+- `DomainEvent` com schema versionado, idempotencia e catalogo.
+- `AuditLog` para acoes sensiveis.
+- matriz LGPD por entidade.
+- classificacao de dados por campo ou grupo de campos.
+- regras de importacao, exportacao e retencao.
+
+### Gate 1 - Prontidao do modulo
+
+Cada modulo precisa entregar:
+
+- PRD com v1, fora de escopo e criterio de aceite;
+- modelo conceitual com invariantes;
+- matriz de permissoes por papel, acao e escopo;
+- eventos produzidos e consumidos;
+- fluxo de excecao;
+- relatorios essenciais;
+- plano de teste cross-tenant/cross-scope;
+- checklist de operacao real.
+
+### Gate 2 - Piloto controlado
+
+Antes de venda ampla:
+
+- piloto com igreja real;
+- dados importados ou simulados em volume realista;
+- logs e auditoria revisados;
+- incidentes documentados;
+- suporte capaz de operar sem engenharia.
 
 ## Criterios de pronto para construir
 
@@ -90,6 +129,9 @@ Nenhum modulo deve entrar em desenvolvimento sem:
 - telas essenciais especificas;
 - metricas de ativacao e retencao;
 - decisao clara do que fica fora da v1.
+- aceite explicito dos contratos com modulos dos quais depende.
+- plano de fallback para operacao critica.
+- teste de permissao sensivel desenhado antes do codigo.
 
 ## Primeiros modulos recomendados
 

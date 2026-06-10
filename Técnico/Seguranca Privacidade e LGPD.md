@@ -58,6 +58,28 @@ Fluxos obrigatorios:
 - registro de encarregado/DPO ou responsavel interno;
 - revisao de impacto para dados sensiveis, criancas, pastoral e financeiro.
 
+Entidades LGPD obrigatorias:
+
+- `ConsentRecord` — consentimento, revogacao, versao do texto e finalidade;
+- `DataSubjectRequest` — acesso, correcao, portabilidade, exclusao/anonimizacao e status;
+- `DataRetentionPolicy` — retencao por tipo de dado, modulo e base legal;
+- `ProcessingActivity` — finalidade, controlador, operador, suboperador e compartilhamento;
+- `SecurityIncident` — incidente, impacto, medidas e comunicacoes;
+- `DpiaReview` — revisao de impacto para dados sensiveis, menores, financeiro e IA.
+
+Gate LGPD por modulo:
+
+- listar campos pessoais e sensiveis;
+- definir finalidade e base legal;
+- definir quem acessa;
+- definir retencao;
+- definir exclusao, anonimização ou bloqueio;
+- definir exportacao/portabilidade;
+- definir compartilhamento com terceiros;
+- definir se IA pode acessar e em qual nivel;
+- definir se ha menores de idade;
+- definir auditoria de leitura.
+
 Observacao legal: dados de criancas e adolescentes devem ser tratados no melhor interesse deles, com cuidado proprio e verificacao razoavel de consentimento do responsavel quando aplicavel.
 
 ## Criancas
@@ -75,6 +97,8 @@ Modulo de Criancas exige nivel extra:
 ## IA
 
 IA nao deve receber todo dado por padrao. Ela deve receber apenas o minimo necessario para a tarefa, respeitando permissao do usuario e nivel de sensibilidade.
+
+Quando IA usar dado de nivel 3, 4 ou 5, registrar finalidade, usuario, escopo, resumo da resposta e acao humana posterior quando houver.
 
 ## Retencao minima recomendada
 

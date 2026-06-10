@@ -10,7 +10,27 @@ atualizado: 2026-05-25
 
 ## Regra principal
 
-O MVP nao e uma versao pequena de 15 modulos. O MVP e a menor plataforma confiavel capaz de sustentar os primeiros modulos sem retrabalho.
+O MVP nao e uma versao pequena de 16 modulos. O MVP e a menor plataforma confiavel capaz de sustentar os primeiros modulos sem retrabalho.
+
+## Fase -1 - Contratos antes de codigo
+
+Objetivo: impedir que os modulos comecem a codar tomando decisoes locais sobre Pessoas, permissao, auditoria, eventos, LGPD e escopos.
+
+Entregas:
+
+- modelo canonico de `Person`, `Household`, `TenantMembership`, `RoleAssignment`, `UserScope`, `ConsentRecord`, `DomainEvent` e `AuditLog`;
+- catalogo inicial de eventos;
+- matriz de classificacao de dados por modulo;
+- checklist de RLS, FKs compostas e testes cross-tenant;
+- padrao de importacao/deduplicacao;
+- padrao de leitura sensivel auditada;
+- criterios de aceite por fase.
+
+Gate de saida:
+
+- nenhum modulo central possui entidade paralela de pessoa, usuario, permissao, arquivo, calendario ou auditoria;
+- todos os modulos priorizados sabem quais eventos produzem e consomem;
+- dados de criancas, financeiro e pastoral possuem permissao sensivel explicitamente nomeada.
 
 ## Fase 0 - Validacao com igrejas
 
@@ -42,6 +62,9 @@ Inclui:
 - comunicacao basica;
 - eventos de dominio;
 - design system operacional.
+- outbox/inbox de eventos de dominio.
+- observabilidade operacional minima.
+- exportacao e direito do titular LGPD.
 
 ## Fase 2 - Primeiro pacote vendavel
 
@@ -54,6 +77,13 @@ Modulos:
 - Apoio Pastoral SOM.
 - Ensino.
 - Comunicacao basica.
+
+Gate de entrada:
+
+- Pessoas tem deduplicacao e merge auditado.
+- Comunicacao respeita consentimento e preferencia de canal.
+- GCs, SOM e Ensino consomem Pessoas sem cadastro paralelo.
+- Eventos criticos alimentam timeline sem payload sensivel aberto.
 
 Por que:
 
@@ -73,6 +103,12 @@ Modulos:
 - Criancas.
 - Portal/App responsivo.
 
+Gate de entrada:
+
+- Modo domingo testado com baixa conectividade e operadores leigos.
+- Check-in/checkout infantil tem autorizacao, excecao e auditoria.
+- Escalas possuem confirmacao, substituicao e restricao por requisito.
+
 Por que:
 
 - domingo e o teste de confiabilidade;
@@ -90,6 +126,12 @@ Modulos:
 - Financeiro.
 - Compras.
 
+Gate de entrada:
+
+- Segregacao de funcao financeira implementada.
+- Eventos pagos usam gateway/Financeiro com idempotencia.
+- Compras exigem centro de custo, aprovacao e recebimento quando aplicavel.
+
 Por que:
 
 - dependem de permissoes e auditoria maduras;
@@ -106,6 +148,7 @@ Modulos:
 - BI avancado.
 - APIs abertas.
 - Integracoes externas.
+- TAP e Engajamento Digital pode antecipar como produto satelite se seus contratos com Financeiro e Pessoas estiverem validados.
 
 ## Criterios para passar de fase
 
@@ -115,4 +158,3 @@ Modulos:
 - Auditoria funcionando em acoes relevantes.
 - Relatorios essenciais respondem perguntas reais.
 - Suporte consegue explicar o modulo sem depender do time tecnico.
-

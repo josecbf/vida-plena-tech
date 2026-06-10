@@ -1,0 +1,328 @@
+---
+tags:
+  - tap
+  - engajamento
+  - produto
+  - prd
+---
+
+# PRD — TAP e Engajamento Digital
+
+← [[000 - Hub TAP e Engajamento Digital]]
+
+---
+
+## 1. Resumo executivo
+
+TAP e Engajamento Digital é o módulo que conecta o momento presencial do culto ao mundo digital. Um visitante toca o celular numa moeda NFC, a tela certa abre, e em segundos ele doa, se inscreve ou deixa um contato — sem app, sem login, sem fricção.
+
+O módulo é composto por três camadas:
+1. **Hardware lógico** — registro e gestão de dispositivos NFC físicos
+2. **Redirect engine** — serviço de redirecionamento dinâmico com latência mínima
+3. **Destinos** — páginas e fluxos configuráveis (oferta, formulários, URLs externas)
+
+### Release comercial
+
+Para evitar ambiguidade entre fundação técnica e produto vendável, este PRD separa quatro marcos:
+
+| Marco | Objetivo | Vendável? |
+|---|---|---|
+| Alpha operacional | TAP, QR, destinos simples e troca manual | Não |
+| Beta piloto | Pix Mercado Pago, recibo simples e observabilidade de culto | Piloto controlado |
+| MVP comercial | Pix estável, contratos com Financeiro/Pessoas, LGPD e Gift Entry básico | Sim |
+| GA | ProPresenter, agendamentos, múltiplos gateways e automações avançadas | Sim |
+
+O **MVP comercial** deste módulo inclui oferta via Pix com Mercado Pago, Gift Entry básico, controle de destinos, consentimento LGPD nos formulários e integração documental com Financeiro e Pessoas. Cartão, Apple Pay, Google Pay, múltiplos gateways e ProPresenter pertencem a fases posteriores, salvo decisão explícita de antecipação.
+
+---
+
+## 2. Problema
+
+A igreja perde dezenas de momentos de engajamento por culto porque o caminho da intenção à ação tem passos demais. Quando o processo é lento, a intenção esfria.
+
+Situações concretas que este módulo resolve:
+
+- Pastor convida para oferta → pessoa precisa abrir banco, ler QR, digitar valor → 40 segundos → desiste
+- Aviso sobre acampamento → pessoa ouve a URL → chega em casa → esqueceu
+- Apelo de oração → pastor pede para preencher cartão → papel não encontrado → momento perdido
+- Inscrição para ECD aberta → 5 eventos simultâneos no mesmo culto → como trocar o QR entre os avisos?
+
+---
+
+## 3. Perfis de usuário
+
+### Administrador da organização
+Configura gateways de pagamento, cria campus, define fundos e categorias, gerencia usuários e papéis, acessa relatórios completos e controla plano de assinatura.
+
+### Líder de comunicação
+Cria e edita destinos (imagem, título, texto, botão, link), configura keywords do ProPresenter, define agendamentos de troca. Não acessa dados financeiros individuais.
+
+### Operador do ProPresenter
+Adiciona keywords nas notas dos slides. Não acessa o painel da plataforma diretamente — sua ação no ProPresenter dispara mudanças automáticas.
+
+### Tesoureiro / Financeiro
+Acessa dashboard de receitas, exporta relatórios, realiza gift entry de doações físicas, reconcilia com módulo Financeiro.
+
+### Visitante / Membro (usuário final — sem login)
+Toca o TAP, age na tela que abre. Não cria conta. Não faz login. Pode opcionalmente identificar-se em formulários pastorais.
+
+---
+
+## 4. Escopo v1
+
+### 4.1 Gestão de dispositivos TAP
+
+- Cadastro de grupos TAP por campus (ex: "Cadeiras Bloco A", "Altar", "Recepção")
+- Registro de dispositivos físicos dentro de cada grupo
+- Geração de URL única por dispositivo (ex: `{slug}.plataforma.com.br/t/{device-id}`)
+- Configuração de tag como leitura apenas (instrução operacional)
+- QR code equivalente gerado automaticamente para fallback impresso
+
+### 4.2 Destinos
+
+Tipos de destino suportados na v1:
+
+| Tipo | Descrição |
+|------|-----------|
+| `offering` | Tela de doação com seleção de valor, fundo e método de pagamento |
+| `event_registration` | Link ou integração futura com inscrição de evento |
+| `pastoral_form` | Formulário embutido: visitante, oração, decisão, batismo, célula |
+| `external_url` | Redirect direto para URL configurada, com validação de segurança |
+| `own_page` | Landing page simples: imagem, título, texto, botão com link |
+
+Cada destino tem:
+- Nome interno (visível só no painel)
+- Conteúdo configurável por tipo
+- Status: ativo / inativo / rascunho
+- Versão de schema de configuração
+- Escopo: organização inteira ou campus específico
+
+`Destination.config` não é JSON livre. Cada tipo possui schema versionado e validado antes de persistir. Alterações futuras criam nova versão de schema e migração explícita.
+
+### 4.3 Controle de destino ativo
+
+Cada grupo TAP tem um destino ativo a cada momento. O destino pode ser trocado por:
+
+1. **Troca manual** — admin ou comunicação troca pelo painel em tempo real
+2. **Agendamento** — troca automática por horário configurado (ex: 10:30 → oferta)
+3. **Keyword ProPresenter** — keyword na nota do slide dispara troca automática
+
+Hierarquia de prioridade (maior sobrescreve menor):
+1. Troca manual
+2. Keyword ProPresenter
+3. Agendamento
+4. Destino padrão
+
+Regras obrigatórias:
+- Troca manual exige duração: até próxima troca, até horário definido, até fim do culto ou permanente.
+- Se a duração expirar, o grupo retorna ao destino padrão ou ao agendamento vigente.
+- Inativar um destino ativo exige escolher substituto ou confirmar retorno ao destino padrão.
+- Ao fim do culto, a organização pode configurar retorno automático para destino padrão ou tela de "culto encerrado".
+
+### 4.4 Fluxo de oferta digital
+
+**Passo 1 — Seleção de valor**
+Botões de valores sugeridos configuráveis pela organização + campo "Outro valor". Não há valor obrigatório pré-preenchido.
+
+**Passo 2 — Seleção de fundo** (se a organização tiver mais de um fundo ativo)
+Ex: Dízimo, Oferta, Missões, Construção. Opcional se só houver um fundo.
+
+**Passo 3 — Método de pagamento**
+- Pix — gera QR dinâmico para o valor exato selecionado (MVP comercial)
+- Cartão de crédito / débito (fase posterior ao Pix estável)
+- Apple Pay (fase posterior, condicionado a domínio/gateway)
+- Google Pay (fase posterior, condicionado a domínio/gateway)
+
+**Passo 4 — Confirmação**
+Tela de confirmação com valor, fundo e instrução de recibo. Recibo enviado por e-mail se informado.
+
+**Dados mínimos coletados:** valor, fundo, método. Nome, e-mail e CPF são opcionais e usados para recibo, relatório anual e vínculo voluntário com Pessoa.
+
+**Ciclo de vida Pix:**
+- Estados: `created`, `pending`, `expired`, `confirmed`, `failed`, `cancelled`, `refunded`.
+- QR Pix tem TTL visível ao doador.
+- Ao expirar, a tela oferece "Gerar novo Pix".
+- Webhook confirma pagamento mesmo se o doador fechar a tela.
+- Cobranças pendentes expiradas são atualizadas por job.
+- Webhook de gateway é idempotente por `gateway_provider`, `gateway_transaction_id` e `gateway_event_id`.
+
+**Recibos e identificação:**
+- Doação pode ser anônima quando permitido pela organização e pelo fundo.
+- Doador pode informar nome, e-mail e CPF para recibo.
+- CPF é armazenado criptografado.
+- Relatório anual por doador depende de CPF ou vínculo com Pessoa.
+- Comprovante transacional não substitui contabilidade oficial do módulo Financeiro.
+
+### 4.5 Formulários pastorais
+
+Quatro tipos na v1:
+
+| Formulário | Campos |
+|------------|--------|
+| Cartão de visitante | Nome, telefone, e-mail, bairro, como conheceu, interesse em próximos passos |
+| Pedido de oração | Nome (opcional), pedido de oração (texto livre), autorização de compartilhamento |
+| Decisão por Jesus | Nome, contato, tipo de decisão (primeira vez, reconciliação, batismo) |
+| Inscrição em célula | Nome, telefone, bairro/região preferida, disponibilidade de dia e horário |
+
+Dados capturados são encaminhados ao módulo Pessoas (criação ou match de perfil existente).
+
+Todos os formulários pastorais exigem consentimento explícito antes do envio. O texto de consentimento é versionado e registra finalidade, retenção e compartilhamento com a igreja.
+
+Regras:
+- Pedido de oração pode ser anônimo e, nesse caso, não cria Pessoa.
+- Dados sensíveis pastorais exigem permissão específica para leitura.
+- Comunicação não vê conteúdo individual sensível de oração ou decisão.
+- Encaminhamento ao módulo Pessoas ocorre via contrato de intake, com estado `matched`, `created` ou `needs_review`.
+
+### 4.6 Integração ProPresenter
+
+- App auxiliar instalado no Mac do ProPresenter (download disponível no painel admin)
+- Autenticação via token escopado por organização, campus e máquina
+- Lê slide notes via API de rede local do ProPresenter (porta configurável)
+- Detecta keywords registradas → envia evento para backend → backend atualiza destino ativo
+- Status de conexão visível no dashboard (conectado / desconectado / última sincronização)
+- Override manual sempre disponível
+- Versão mínima suportada do ProPresenter deve ser documentada antes da distribuição
+- App distribuído como `.dmg` assinado e notarizado no macOS
+- Token pode ser revogado e rotacionado pelo painel
+- Heartbeat identifica campus, máquina, versão do app e última conexão
+- Conflitos de keyword são resolvidos por prioridade explícita e logados
+
+### 4.7 Gift entry
+
+- Lançamento manual de doação: valor, fundo, método (dinheiro, cheque, Pix externo), data, observação
+- Lote de lançamentos por culto (batch)
+- Emite evento para módulo Financeiro da mesma forma que doação digital
+- Lote possui estados: aberto, em conferência, fechado, reaberto e exportado
+- Fechamento de lote exige permissão financeira
+- Correções após fechamento geram auditoria
+- Gift Entry básico faz parte do MVP comercial
+
+### 4.8 Dashboard de engajamento
+
+- Total de taps por período
+- Destinos mais acessados
+- Taps por grupo e campus
+- Doações: total, por fundo, por método, por período
+- Formulários pastorais submetidos (quantidade por tipo, sem expor dados individuais por padrão)
+- Histórico de trocas de destino
+
+Separação de precisão:
+- Analytics de taps é métrica operacional e pode ser filtrada contra abuso.
+- Dados financeiros confirmados vêm de eventos idempotentes de gateway/Financeiro.
+- Relatório contábil oficial pertence ao módulo Financeiro.
+
+### 4.9 Contratos com outros módulos
+
+#### Financeiro
+
+TAP publica eventos de domínio; Financeiro consolida e presta contas.
+
+Eventos mínimos:
+- `tap.donation.confirmed`
+- `tap.donation.failed`
+- `tap.donation.refunded`
+- `tap.gift_entry.created`
+- `tap.gift_batch.closed`
+
+Cada evento inclui `event_id`, `schema_version`, `tenant_id`, `campus_id`, `occurred_at`, `idempotency_key`, entidade de origem e payload mínimo.
+
+#### Pessoas
+
+Formulários pastorais publicam `tap.person_intake.submitted`. O módulo Pessoas decide criação, match ou revisão.
+
+Resultado esperado:
+- `matched`: pessoa existente vinculada
+- `created`: pessoa criada com consentimento
+- `needs_review`: possível duplicidade
+- `anonymous`: submissão sem criação de pessoa
+
+#### Comunicação
+
+Comunicação recebe eventos de confirmação quando houver e-mail/telefone autorizado:
+- recibo de doação;
+- agradecimento de formulário;
+- notificação interna para equipe responsável.
+
+### 4.10 LGPD, retenção e auditoria
+
+Todo dado pessoal coletado pelo módulo deve ter finalidade explícita.
+
+| Dado | Finalidade | Retenção conceitual |
+|---|---|---|
+| TapEvent sem identificação | Analytics operacional | 12 meses bruto; agregado após isso |
+| Donation identificada | Recibo, prestação de contas e histórico financeiro | Conforme obrigação financeira/contábil |
+| GiftEntry | Prestação de contas e conciliação | Conforme obrigação financeira/contábil |
+| Formulário pastoral | Acompanhamento pastoral solicitado | Política da igreja, com revisão periódica |
+| Consentimento | Prova de autorização e revogação | Enquanto necessário para comprovação |
+
+Ações sensíveis exigem `AuditLog`: visualizar submissão pastoral, exportar doações, alterar gateway, trocar destino ao vivo, reembolsar, fechar lote e alterar permissões.
+
+---
+
+## 5. Pacotes comerciais
+
+### Essencial
+- 1 campus
+- Até 5 grupos TAP
+- Pix via gateway suportado
+- Troca manual de destino
+- 3 fundos
+- Destinos: oferta e URL externa
+- Gift Entry básico
+- Suporte por base de conhecimento
+
+### Crescimento
+- Até 3 campus
+- Até 20 grupos TAP
+- Pix e cartão
+- Troca manual + agendamento + ProPresenter
+- Até 5 fundos
+- Todos os tipos de destino
+- Formulários pastorais
+- Dashboard completo
+- Suporte por e-mail
+
+### Missão
+- Campus ilimitados
+- Grupos TAP ilimitados
+- Todos os métodos de pagamento
+- Todos os recursos de automação
+- Fundos ilimitados
+- Gift entry
+- Múltiplos gateways por campus
+- Domínio próprio
+- Analytics com IA
+- Suporte prioritário
+
+Ao atingir limite de plano, o sistema não quebra fluxos públicos já instalados durante culto. O bloqueio é administrativo: impede criar novos recursos acima do limite, exibe alerta e oferece upgrade. Recursos existentes continuam funcionando durante uma janela de graça definida comercialmente.
+
+---
+
+## 6. Escopo futuro
+
+- Doações recorrentes com agendamento automático
+- Perfil do doador com histórico (opt-in)
+- Relatórios por campanha / capital campaign
+- Pledges e metas de campanha
+- App auxiliar ProPresenter para Windows
+- Integração com Planning Center Giving como gateway
+- Wearables NFC (pulseiras para eventos)
+- Notificação push para liderança em tempo real durante culto
+- IA: "Quais fundos caíram este mês?", "Quem não contribuiu nos últimos 90 dias?"
+
+---
+
+## 7. Critérios de aceite do MVP
+
+- [ ] Uma organização configura campus, grupo TAP, dispositivo, QR e destino padrão em menos de 10 minutos.
+- [ ] Um visitante toca o TAP e abre o destino ativo em menos de 2 segundos no mobile.
+- [ ] Um visitante completa uma doação via Pix Mercado Pago, com QR dinâmico, TTL visível e confirmação por webhook idempotente.
+- [ ] Doação confirmada emite evento para Financeiro exatamente uma vez.
+- [ ] Formulário pastoral registra consentimento versionado antes do envio.
+- [ ] Submissão pastoral sensível só é visível a papéis autorizados e gera auditoria de leitura.
+- [ ] Dados de uma organização não são visíveis para outra; RLS e testes cross-tenant verificados.
+- [ ] Dados de um campus não atravessam outro campus quando o usuário tem escopo restrito.
+- [ ] O endpoint de redirect responde em menos de 200ms em p95 sob 500 taps simultâneos.
+- [ ] Gift Entry básico permite abrir, lançar e fechar lote com auditoria.
+- [ ] Limites do plano bloqueiam criação administrativa, sem quebrar TAP público já configurado.

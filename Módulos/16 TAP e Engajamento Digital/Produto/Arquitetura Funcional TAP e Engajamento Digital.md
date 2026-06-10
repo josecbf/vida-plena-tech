@@ -1,0 +1,311 @@
+---
+tags:
+  - tap
+  - engajamento
+  - produto
+  - arquitetura-funcional
+---
+
+# Arquitetura Funcional — TAP e Engajamento Digital
+
+← [[000 - Hub TAP e Engajamento Digital]]
+
+---
+
+## Áreas funcionais
+
+O módulo é dividido em cinco áreas funcionais com fronteiras claras:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                 TAP e Engajamento Digital                │
+│                                                         │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
+│  │  Dispositivos│  │   Destinos   │  │  Redirect    │  │
+│  │  e Grupos    │  │              │  │  Engine      │  │
+│  └──────────────┘  └──────────────┘  └──────────────┘  │
+│                                                         │
+│  ┌──────────────┐  ┌──────────────────────────────────┐ │
+│  │  Gateway     │  │  Dashboard e Analytics           │ │
+│  │  Abstrato    │  │                                  │ │
+│  └──────────────┘  └──────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Área 1 — Dispositivos e Grupos TAP
+
+**Responsabilidade:** representar logicamente os dispositivos NFC físicos e sua organização em grupos dentro de um campus.
+
+**Capacidades:**
+- CRUD de grupos TAP por campus
+- CRUD de dispositivos dentro de grupos
+- Geração e exibição de URL única por dispositivo
+- Geração de QR code equivalente
+- Exibição do destino ativo atual por grupo
+- Log de trocas de destino (quem trocou, quando, por qual meio)
+
+**Fluxo de configuração de um novo dispositivo:**
+```
+Admin cria grupo TAP (campus, nome, descrição)
+  ↓
+Admin adiciona dispositivo ao grupo (nome, localização física)
+  ↓
+Sistema gera URL única: {slug}.plataforma.com.br/t/{device-id}
+  ↓
+Admin programa a URL na moeda NFC (fora da plataforma)
+  ↓
+Admin configura o destino padrão do grupo
+  ↓
+Dispositivo está operacional
+```
+
+---
+
+## Área 2 — Destinos
+
+**Responsabilidade:** gerenciar o catálogo de destinos configuráveis — o "o quê" para onde cada TAP aponta.
+
+**Capacidades:**
+- CRUD de destinos por organização
+- Suporte a cinco tipos: `offering`, `event_registration`, `pastoral_form`, `external_url`, `own_page`
+- Editor simplificado para tipo `own_page`: upload de imagem, título, texto, botão
+- Atribuição de destino ativo a grupos TAP
+- Controle de trocas: manual, agendado, ProPresenter
+
+**Fluxo de troca de destino:**
+```
+Fonte de troca (manual / agendamento / keyword ProPresenter)
+  ↓
+Valida: destino existe? está ativo? grupo pertence ao tenant e campus permitido?
+  ↓
+Atualiza `tap_groups.current_destination_id` no banco
+  ↓
+Invalida cache do grupo no KV store
+  ↓
+Registra evento no log de trocas
+  ↓
+Próximo tap já recebe o novo destino
+```
+
+Toda troca de destino registra `AuditLog` com origem, usuário/token, campus, grupo, destino anterior, destino novo, duração do override e justificativa quando aplicável.
+
+---
+
+## Área 3 — Redirect Engine
+
+**Responsabilidade:** responder requisições de tap com a menor latência possível.
+
+**Capacidades:**
+- Endpoint `GET /t/{device-id}` → consulta destino ativo → 302 redirect
+- Cache de destino ativo com TTL de 10s (KV store / Vercel Edge Config)
+- Fallback para banco se cache miss
+- Registro de tap (timestamp, device-id, destination-id) — sem dados pessoais do usuário final
+- Resposta em < 200ms em p95 sob 500 taps simultâneos
+- IDs de dispositivos não enumeráveis
+- Rate limit leve por IP/device fingerprint
+- Detecção de anomalia por volume e origem
+- Inserção de analytics fora do caminho crítico do redirect
+
+**Fluxo de um tap:**
+```
+Celular toca moeda NFC
+  ↓
+Abre URL do dispositivo (ex: /t/abc123)
+  ↓
+Edge Function consulta cache (< 5ms)
+  ↓ [cache hit]
+302 redirect para URL do destino ativo
+  ↓
+Celular abre destino (tela de oferta, formulário, etc.)
+```
+
+**Falhas e fallback:**
+- Device inexistente ou inativo: página segura de "TAP indisponível".
+- Grupo sem destino ativo: página padrão da organização/campus.
+- Destino inativo: retorna destino padrão ou página de contingência.
+- Cache indisponível: consulta banco com timeout curto.
+- Banco indisponível: usa último destino cacheado se ainda válido; caso contrário, página de contingência.
+
+---
+
+## Área 4 — Gateway Abstrato
+
+**Responsabilidade:** abstrair os diferentes gateways de pagamento em uma interface única, delegar o processamento financeiro ao gateway da organização.
+
+**Interface do gateway:**
+```typescript
+interface PaymentGateway {
+  createPixCharge(params: PixParams): Promise<PixCharge>
+  createCardToken(params: CardParams): Promise<CardToken>
+  chargeCard(token: string, params: ChargeParams): Promise<Charge>
+  getApplePaySession(): Promise<ApplePaySession>
+  getWebhookPayload(raw: string, signature: string): DonationEvent
+}
+```
+
+**Implementações v1:**
+- `MercadoPagoGateway`
+
+**Implementações pós-MVP:**
+- `StripeGateway`
+- `AsaasGateway`
+
+**Configuração por organização:**
+- Admin escolhe gateway no onboarding
+- Fornece credenciais de API (armazenadas criptografadas)
+- Cada campus pode ter gateway diferente (pacote Missão)
+
+**Fluxo de doação via Pix:**
+```
+Doador seleciona valor e fundo na tela de oferta
+  ↓
+Backend cria cobrança Pix no gateway da organização
+  ↓
+Gateway retorna QR code + código Pix copia-e-cola
+  ↓
+Tela exibe QR + botão de copiar
+  ↓
+Doador abre banco, escaneia ou cola
+  ↓
+Gateway notifica plataforma via webhook
+  ↓
+Plataforma registra doação confirmada
+  ↓
+Emite evento para módulo Financeiro
+  ↓
+Envia recibo para doador (se e-mail informado)
+```
+
+**Regras obrigatórias do gateway:**
+- Todo webhook é validado por assinatura.
+- Todo webhook é armazenado em `PaymentWebhookEvent`.
+- Processamento é idempotente por `gateway_event_id` e por `gateway_transaction_id`.
+- Reenvio conhecido retorna sucesso sem duplicar doação.
+- Cobrança Pix possui TTL e expiração.
+- Doação só entra em relatório confirmado quando `status = confirmed`.
+- Reembolso publica evento próprio para Financeiro.
+
+---
+
+## Área 5 — Dashboard e Analytics
+
+**Responsabilidade:** dar visibilidade ao engajamento e às receitas sem expor dados sensíveis desnecessariamente.
+
+**Capacidades:**
+- Métricas de engajamento: taps por período, por grupo, por campus
+- Métricas de oferta: total arrecadado, por fundo, por método, por período
+- Formulários pastorais: quantidade por tipo (sem expor dados individuais)
+- Histórico de trocas de destino
+- Status de conexão do app ProPresenter
+- Gift entry: lançamento e listagem
+
+**Observabilidade de culto:**
+- Latência p95/p99 do redirect
+- Taxa de erro do redirect
+- Último destino ativo por grupo
+- Status do gateway e último erro
+- Webhooks pendentes/falhos
+- Status ProPresenter por campus/máquina
+- Fila de analytics e eventos financeiros
+
+---
+
+## Integração ProPresenter — fluxo detalhado
+
+```
+[Mac com ProPresenter]
+       |
+   App Auxiliar
+   (instalado local)
+       |
+       | Lê slides via API de rede do ProPresenter
+       | (porta configurável, ex: 50001)
+       |
+       | Detecta nota do slide ativo
+       |
+       | Keyword encontrada? (ex: "OFERTA")
+       |
+       ↓
+   POST /api/propresenter/keyword
+   Authorization: Bearer {campus-machine-token}
+   Body: { keyword: "OFERTA", campus_id: "...", machine_id: "...", app_version: "..." }
+       |
+       ↓
+   Backend identifica grupo(s) mapeados para "OFERTA"
+       |
+       ↓
+   Atualiza destino ativo de cada grupo
+       |
+       ↓
+   Invalida cache
+```
+
+**Contrato operacional:**
+- Token do app é escopado a tenant, campus e máquina.
+- Token pode ser revogado e rotacionado pelo painel.
+- App envia heartbeat periódico com versão, campus, máquina e status da conexão local.
+- Keyword duplicada no mesmo campus é inválida, salvo prioridade explícita.
+- Duas keywords no mesmo slide seguem ordem de prioridade; conflito é logado.
+- Slide repetido não deve reenviar o mesmo evento sem mudança de estado ou janela mínima.
+- Versão mínima do ProPresenter é pré-requisito de GA.
+- App macOS deve ser assinado e notarizado antes do piloto aberto.
+
+---
+
+## Fluxo de onboarding de nova organização
+
+```
+1. Cadastro no site
+   Nome da organização, e-mail, senha
+
+2. Verificação de e-mail
+
+3. Onboarding guiado (wizard 4 passos)
+   Passo 1: Informações básicas (nome, cidade, porte)
+   Passo 2: Configurar primeiro campus
+   Passo 3: Escolher e conectar gateway de pagamento
+   Passo 4: Criar primeiro grupo TAP e copiar URL
+
+4. Selecionar plano (Essencial gratuito por 14 dias → upgrade)
+
+5. Igreja operacional
+```
+
+## Contratos de integração interna
+
+### Financeiro
+
+TAP não é a fonte contábil final. TAP publica eventos idempotentes e o módulo Financeiro consolida.
+
+Eventos mínimos:
+- `tap.donation.confirmed`
+- `tap.donation.failed`
+- `tap.donation.refunded`
+- `tap.gift_entry.created`
+- `tap.gift_batch.closed`
+
+### Pessoas
+
+TAP publica `tap.person_intake.submitted`. O módulo Pessoas decide match, criação ou revisão manual.
+
+Regras:
+- Telefone, e-mail e CPF são normalizados antes do envio.
+- Pedido de oração anônimo não cria Pessoa.
+- Ambiguidade retorna `needs_review`.
+- Consentimento versionado acompanha o evento.
+
+### Comunicação
+
+Confirmações e recibos são enviados por Comunicação quando houver permissão e dado de contato autorizado. TAP não implementa motor próprio de mensagens.
+
+## Segurança de URL externa
+
+Destino `external_url` exige:
+- URL HTTPS, exceto ambiente local/dev.
+- Bloqueio de protocolos perigosos.
+- Preview do domínio antes de publicar.
+- Alerta visual quando domínio não pertence à organização.
+- Política opcional de allowlist por organização.
+- Auditoria ao publicar ou alterar URL externa.
