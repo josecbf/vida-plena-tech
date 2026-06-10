@@ -33,6 +33,34 @@ Plataforma SaaS inspirada no modelo do Planning Center: um núcleo comum de pess
 
 > Controle desta linha de trabalho: [`ze-start.md`](ze-start.md) (plano + todo) e [`CLAUDE-ZE.md`](CLAUDE-ZE.md) (log/handoff).
 
+## Desenvolvimento — rodar localmente
+
+Pré-requisitos: **Node 20+** e **pnpm 10+**.
+
+```bash
+# 1. Instalar dependências (na raiz do monorepo)
+pnpm install
+
+# 2. Subir a demo (módulos Pessoas + Ensino)
+pnpm --filter @videira/demo dev
+# abre em http://localhost:3000
+```
+
+Outros comandos úteis:
+
+```bash
+pnpm --filter @videira/demo build   # build de produção (valida tipos)
+pnpm build                          # build de todos os workspaces (Turborepo)
+```
+
+Para encerrar e liberar a porta 3000:
+
+```bash
+pkill -f "next dev"
+```
+
+Na demo, use o alternador **Equipe ⟷ Membro** no topo: a visão Equipe traz Pessoas e Ensino (administrativo); a visão Membro abre a **área do aluno** com os cursos e o player de aula. Detalhes em [`apps/demo/README.md`](apps/demo/README.md).
+
 ## Módulos planejados
 
 1. Pessoas *(núcleo)*
@@ -53,7 +81,7 @@ Plataforma SaaS inspirada no modelo do Planning Center: um núcleo comum de pess
 
 ## Como usar este repositório
 
-Este repo contém exclusivamente documentação e planejamento de produto em Markdown padrão.
+Monorepo com documentação de produto (`docs/`) e código da plataforma (`apps/`, `packages/`), além dos agentes de IA (`agents/`).
 
 Para colaborar, leia primeiro:
 - [`COLLABORATION.md`](COLLABORATION.md) — protocolo de trabalho para todos os colaboradores e agentes
