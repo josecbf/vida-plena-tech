@@ -115,6 +115,44 @@ tags:
 - Como usuário com papel "comunicação", quero ver só os destinos e o controle de ativação, sem acessar dados financeiros, para focar no meu trabalho.
 - Como comunicação, quero trocar o destino ativo de um grupo com um clique, para reagir rapidamente durante o culto.
 
+### Aceite integrado — Fase 1 Alpha operacional
+
+**Objetivo do aceite:** provar que uma organização consegue configurar e operar um TAP real sem pagamento, e que o visitante abre o destino ativo correto em menos de 2 segundos, sem login.
+
+**Roteiro mínimo:**
+- [ ] Admin cria campus, grupo TAP ativo e dispositivo com URL pública única.
+- [ ] Admin programa a URL em moeda NFC real ou usa QR equivalente.
+- [ ] Admin configura destino padrão do grupo.
+- [ ] Comunicação cria e publica destino `own_page`.
+- [ ] Comunicação cria e publica destino `external_url` com URL `https://` válida e domínio revisado.
+- [ ] Comunicação ativa um destino em grupo com duração definida.
+- [ ] Visitante toca a moeda NFC sem login e abre o destino ativo correto.
+- [ ] Sistema registra tap operacional sem bloquear redirect e sem coletar dado pessoal direto automaticamente.
+- [ ] Ao fim da duração, grupo retorna ao destino padrão ou estado confirmado.
+- [ ] Histórico/auditoria mostra criação, publicação, troca manual e retorno.
+
+**Critérios por perfil:**
+- [ ] `admin` consegue configurar estrutura mínima, mas não precisa operar o culto.
+- [ ] `comunicacao` consegue operar destinos e trocas nos campi permitidos sem acessar financeiro ou dados pastorais sensíveis.
+- [ ] visitante não faz login, não vê erro técnico e recebe destino correto ou contingência segura.
+
+**Cenários de contingência:**
+- [ ] Device inexistente, inválido, inativo ou arquivado não redireciona para destino ativo e não revela detalhe técnico.
+- [ ] Grupo inativo, sem destino ativo ou sem destino padrão apresenta contingência controlada.
+- [ ] Destino rascunho, inativo, arquivado, URL inválida ou domínio reprovado não pode ser ativado; em runtime cai para destino padrão válido ou contingência.
+- [ ] Falha de analytics não impede redirect.
+- [ ] Rate limit ou tráfego suspeito não contamina analytics limpo.
+- [ ] Tentativa cross-tenant ou cross-campus é bloqueada.
+
+**Go/no-go para iniciar Fase 2 Pix controlado:**
+- [ ] Todos os critérios E02, E03, E04 e E05 estão atendidos ou explicitamente adiados fora do Alpha.
+- [ ] Roteiro feliz executado com NFC real ou QR equivalente.
+- [ ] Abertura percebida do destino ativo em < 2s.
+- [ ] Redirect p95 < 200ms em 500 requisições simultâneas com cache hit.
+- [ ] Contingências testadas sem vazamento de stack trace, IDs internos ou detalhes de infraestrutura.
+- [ ] Papéis `admin` e `comunicacao` validados com escopo de campus.
+- [ ] Não há dependência de Pix, gateway, ProPresenter ou formulários pastorais para aprovar o Alpha.
+
 ---
 
 ## Histórias — Fase 2 — Beta Pix controlado
