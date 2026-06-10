@@ -152,7 +152,7 @@ Tela de confirmação com valor, fundo e instrução de recibo. Recibo enviado p
 - Doação pode ser anônima quando permitido pela organização e pelo fundo.
 - Doador pode informar nome, e-mail e CPF para recibo.
 - CPF é armazenado criptografado.
-- Relatório anual por doador depende de CPF ou vínculo com Pessoa.
+- Relatório anual por doador depende de CPF; vínculo com Pessoa fica para fase futura, após contrato próprio.
 - Comprovante transacional não substitui contabilidade oficial do módulo Financeiro.
 
 ### 4.5 Formulários pastorais

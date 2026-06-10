@@ -35,7 +35,7 @@ tags:
 | E17 | Pacotes e billing | 4 |
 | E18 | Onboarding guiado | 4 |
 | E19 | LGPD, consentimento e auditoria | 0 |
-| E20 | Contratos com Financeiro e Pessoas | 0 |
+| E20 | Contrato financeiro e decisão de não cadastro | 0 |
 | E21 | Observabilidade de culto | 2 |
 
 ---
@@ -48,11 +48,11 @@ tags:
 - Como pastor autorizado, quero que a leitura de pedidos sensíveis seja auditada, para preservar confiança pastoral.
 - Como titular de dados, quero que meus dados possam ser exportados, corrigidos ou anonimizados quando cabível, para atender LGPD.
 
-### E20 — Contratos com Financeiro e Pessoas
+### E20 — Contrato financeiro e decisão de não cadastro
 
 - Como sistema, quero publicar evento de doação confirmada com chave de idempotência, para que o Financeiro consolide sem duplicidade.
-- Como sistema, quero publicar submissão pastoral para Pessoas com consentimento e origem, para permitir match ou revisão.
-- Como operador, quero ver submissões ambíguas como `needs_review`, para evitar cadastro duplicado.
+- Como sistema, quero manter formulários pastorais como registros operacionais do TAP, para não criar cadastro de Pessoas/visitantes no escopo atual.
+- Como PO, quero registrar que integração com Pessoas é fase futura, para impedir que a implementação tome decisão de cadastro no código.
 
 ---
 

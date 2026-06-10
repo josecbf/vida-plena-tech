@@ -28,7 +28,9 @@ O módulo oferece tipos de destino pré-definidos (cartão de visitante, pedido 
 
 ### Não é sistema de CRM ou cadastro
 
-O TAP pode capturar nome, e-mail e telefone num formulário pastoral. Esses dados são encaminhados ao módulo Pessoas para criação ou atualização de perfil. O TAP não mantém base de pessoas própria.
+O TAP pode capturar nome, e-mail e telefone num formulário pastoral, mas no escopo atual esses dados permanecem como registros operacionais do próprio TAP. Eles não criam, atualizam nem enriquecem cadastro de Pessoas/visitantes.
+
+Qualquer vínculo futuro com o módulo Pessoas exige decisão própria, contrato de integração, consentimento, regras de match e revisão de duplicidade.
 
 ### Não é app
 

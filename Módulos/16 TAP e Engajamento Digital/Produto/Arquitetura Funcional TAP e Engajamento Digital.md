@@ -288,13 +288,13 @@ Eventos mínimos:
 
 ### Pessoas
 
-TAP publica `tap.person_intake.submitted`. O módulo Pessoas decide match, criação ou revisão manual.
+No escopo atual, TAP não publica intake para Pessoas e não cria, atualiza ou enriquece cadastro de Pessoas/visitantes.
 
 Regras:
-- Telefone, e-mail e CPF são normalizados antes do envio.
-- Pedido de oração anônimo não cria Pessoa.
-- Ambiguidade retorna `needs_review`.
-- Consentimento versionado acompanha o evento.
+- Formulários pastorais e inscrições permanecem como registros operacionais do TAP.
+- Pedido de oração anônimo permanece sem identificação canônica.
+- Origem, consentimento e destino ficam registrados no TAP.
+- Integração futura com Pessoas exige contrato próprio antes de qualquer match, criação ou revisão de cadastro.
 
 ### Comunicação
 
