@@ -4,7 +4,7 @@ tags:
   - stress-test
   - tap
   - engajamento
-atualizado: 2026-06-09
+atualizado: 2026-06-10
 ---
 
 # Stress Test Hard — Módulo 16: TAP e Engajamento Digital
@@ -13,9 +13,9 @@ atualizado: 2026-06-09
 
 **Status original:** REPROVADO para início de desenvolvimento.
 
-**Status pós-correção documental:** EM REVALIDAÇÃO. Os bloqueadores foram transformados em decisões, contratos e tarefas nos documentos do módulo. Antes de codar, falta validação cruzada com os módulos Financeiro e Pessoas.
+**Status pós-correção documental:** EM REVALIDAÇÃO COM DECISÕES DE PO. Os bloqueadores foram transformados em decisões, contratos e tarefas nos documentos do módulo. TAP fica definido como facilitador de inscrições e doações, sem criação de cadastro de Pessoas/visitantes no escopo atual.
 
-O conceito é forte, vendável e tem diferenciação real no contexto brasileiro. Porém, do jeito que está documentado, ainda existe risco alto de retrabalho estrutural na primeira implementação, especialmente em pagamento, LGPD, multi-tenant, ProPresenter, deduplicação com Pessoas e fronteira com Financeiro.
+O conceito é forte, vendável e tem diferenciação real no contexto brasileiro. O risco principal restante está em pagamento, LGPD, multi-tenant, ProPresenter e fronteira com Financeiro. A deduplicação com Pessoas deixa de bloquear o escopo atual porque TAP não criará cadastro de Pessoas/visitantes nesta etapa.
 
 **Nota original de prontidão para codar:** 38/100.
 
@@ -33,7 +33,15 @@ Em 2026-06-09, os achados foram incorporados nos documentos-fonte do módulo:
 - Plano de trabalho corrigido com Alpha operacional, Beta Pix, MVP comercial e GA.
 - Riscos e decisões de produto corrigidos para refletir gateway MVP, limites de plano e segurança de URL externa.
 
-**Gate restante:** Financeiro e Pessoas precisam aceitar os contratos publicados pelo TAP antes do início da implementação.
+**Decisões do PO em 2026-06-10:**
+- TAP é apenas um facilitador de inscrições e doações.
+- TAP não gera cadastro de pessoas ou visitantes neste momento.
+- MVP comercial deve priorizar Pix Mercado Pago, Gift Entry básico, contrato financeiro, LGPD e observabilidade.
+- Plano Essencial deve comportar pelo menos três fundos e Gift Entry básico.
+- Limites comerciais não devem derrubar TAP público durante culto; usar janela de graça e alerta administrativo.
+- Piloto inicial: Comunidade Vida Plena.
+
+**Gate restante:** Financeiro precisa aceitar os eventos idempotentes do TAP antes do MVP comercial. Pessoas passa a ser integração futura, não bloqueio do escopo atual.
 
 ---
 
@@ -184,7 +192,9 @@ O módulo só deve entrar em desenvolvimento quando cumprir todos os itens abaix
 
 **Impacto:** Duplicidade de pessoas, timeline errada, contato pastoral perdido.
 
-**Correção obrigatória:**
+**Status em 2026-06-10:** substituído por decisão de escopo. TAP não cria cadastro de Pessoas/visitantes neste momento; portanto deduplicação com Pessoas deixa de ser bloqueador do escopo atual e passa a ser requisito de uma integração futura.
+
+**Correção obrigatória se Pessoas voltar ao escopo:**
 - API/Evento `person_intake.submitted`.
 - Estratégia de match: telefone normalizado, e-mail, CPF quando houver, nome + contexto.
 - Estado `needs_review` quando ambíguo.
@@ -419,7 +429,7 @@ Doador contribui R$ 500 por engano e pede reembolso parcial de R$ 450. O modelo 
 
 ### Respostas aplicadas na correção documental
 
-1. MVP comercial = TAP com Pix Mercado Pago, LGPD, Gift Entry básico e contratos com Financeiro/Pessoas.
+1. MVP comercial = TAP com Pix Mercado Pago, LGPD, Gift Entry básico e contrato com Financeiro.
 2. TAP armazena operação de origem; Financeiro é a fonte contábil oficial.
 3. Gateway de produção inicial = Mercado Pago + Pix. Stripe/Asaas pós-MVP.
 4. `Destination` pode ser global por tenant ou escopado por campus, com invariantes explícitos.
@@ -440,7 +450,8 @@ Doador contribui R$ 500 por engano e pede reembolso parcial de R$ 450. O modelo 
 
 - Resolver B-01 a B-12.
 - Padronizar `tenant_id`, `campus_id`, eventos e permissões.
-- Especificar contratos com Financeiro, Pessoas e Comunicação.
+- Especificar contrato com Financeiro e limites de comunicação/consentimento.
+- Registrar que Pessoas fica fora do escopo atual de cadastro, criação ou match.
 - Escrever schemas de `Destination.config`.
 - Definir matriz LGPD e retenção.
 
@@ -486,13 +497,13 @@ Doador contribui R$ 500 por engano e pede reembolso parcial de R$ 450. O modelo 
 - [x] Matriz de permissões granular para financeiro e pastoral.
 - [x] Mapa LGPD por entidade e formulário.
 - [x] Contrato de eventos com Financeiro documentado.
-- [x] Contrato de intake com Pessoas documentado.
+- [x] Decisão de não criar cadastro de Pessoas/visitantes no escopo atual documentada.
 - [x] Fluxo Pix completo, incluindo expiração e idempotência.
 - [x] ProPresenter com escopo de campus, token, assinatura e operação.
 - [x] Feature flags e limites de plano com comportamento definido.
 - [x] Testes cross-tenant e cross-campus especificados.
 - [x] Observabilidade mínima definida.
-- [ ] Contratos aceitos pelos módulos Financeiro e Pessoas.
+- [ ] Contrato financeiro aceito pelo módulo Financeiro.
 
 ---
 
@@ -500,6 +511,6 @@ Doador contribui R$ 500 por engano e pede reembolso parcial de R$ 450. O modelo 
 
 O produto deve continuar. A tese é boa e a rodada documental corrigiu os bloqueadores internos do módulo.
 
-O principal risco agora não é falta de especificação interna do TAP; é começar a codar antes de validar os contratos com Financeiro e Pessoas.
+O principal risco agora não é falta de especificação interna do TAP; é começar a codar o MVP comercial antes de validar o contrato financeiro.
 
-O próximo passo correto é revisão intermodular desses contratos. Com essa validação feita, a squad pode começar pela Fase 0/Alpha com risco bem menor de surpresa.
+O próximo passo correto é revisão intermodular do contrato financeiro e consolidação das regras LGPD/permissões. Com essa validação feita, a squad pode começar pela Fase 0/Alpha com risco bem menor de surpresa.

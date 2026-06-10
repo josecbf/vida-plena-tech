@@ -23,7 +23,7 @@ Entregar valor real o mais cedo possível. A Fase 1 já deve ser utilizável em 
 
 **Entregáveis:**
 - Contratos de eventos com Financeiro
-- Contrato de intake com Pessoas
+- Decisão formal de não criar cadastro de Pessoas/visitantes no escopo atual
 - Schemas versionados de `Destination.config`
 - Mapa LGPD por entidade e formulário
 - Matriz de permissões sensíveis
@@ -92,13 +92,13 @@ Entregar valor real o mais cedo possível. A Fase 1 já deve ser utilizável em 
 - Integração ProPresenter → keywords → troca automática
 - Formulários pastorais (visitante, oração, decisão, célula)
 - Consentimento versionado em formulários pastorais
-- Encaminhamento de dados de formulário ao módulo Pessoas
+- Registros operacionais de formulários sem criação de cadastro de Pessoas
 - Leitura sensível com permissão e auditoria
 - App ProPresenter assinado/notarizado, token por campus/máquina e heartbeat
 - Gateway Stripe como segunda implementação, se Pix estiver estável
 - Cartão tokenizado, se contrato de gateway estiver estável
 
-**Critério de aceite:** Keyword no slide do ProPresenter troca o destino do TAP em < 3s. Formulário de visitante cria registro no módulo Pessoas sem duplicidade.
+**Critério de aceite:** Keyword no slide do ProPresenter troca o destino do TAP em < 3s. Formulários registram inscrições/manifestações no TAP com consentimento, sem criar cadastro de Pessoas.
 
 **Duração estimada:** 3–4 semanas
 
@@ -164,6 +164,8 @@ Fase 1 ────────────────────────�
 **Dependência crítica financeira:** O módulo Financeiro precisa aceitar eventos idempotentes do TAP antes do MVP comercial.
 
 **Dependência crítica LGPD:** Formulários pastorais só podem ir a piloto com consentimento versionado, retenção definida e permissão sensível auditada.
+
+**Dependência crítica Pessoas:** criação, match ou enriquecimento de Pessoas fica fora do escopo atual e só pode entrar após contrato próprio aprovado.
 
 ---
 

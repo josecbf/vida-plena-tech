@@ -14,7 +14,9 @@ tags:
 
 ## 1. Resumo executivo
 
-TAP e Engajamento Digital é o módulo que conecta o momento presencial do culto ao mundo digital. Um visitante toca o celular numa moeda NFC, a tela certa abre, e em segundos ele doa, se inscreve ou deixa um contato — sem app, sem login, sem fricção.
+TAP e Engajamento Digital é o módulo que conecta o momento presencial do culto ao mundo digital. Um visitante toca o celular numa moeda NFC, a tela certa abre, e em segundos ele doa, se inscreve ou envia uma manifestação operacional — sem app, sem login, sem fricção.
+
+TAP é um facilitador de inscrições e doações. No escopo atual, ele não cria cadastro de pessoas ou visitantes; qualquer integração futura com Pessoas deve passar por contrato próprio.
 
 O módulo é composto por três camadas:
 1. **Hardware lógico** — registro e gestão de dispositivos NFC físicos
@@ -29,10 +31,10 @@ Para evitar ambiguidade entre fundação técnica e produto vendável, este PRD 
 |---|---|---|
 | Alpha operacional | TAP, QR, destinos simples e troca manual | Não |
 | Beta piloto | Pix Mercado Pago, recibo simples e observabilidade de culto | Piloto controlado |
-| MVP comercial | Pix estável, contratos com Financeiro/Pessoas, LGPD e Gift Entry básico | Sim |
+| MVP comercial | Pix estável, contrato com Financeiro, LGPD e Gift Entry básico | Sim |
 | GA | ProPresenter, agendamentos, múltiplos gateways e automações avançadas | Sim |
 
-O **MVP comercial** deste módulo inclui oferta via Pix com Mercado Pago, Gift Entry básico, controle de destinos, consentimento LGPD nos formulários e integração documental com Financeiro e Pessoas. Cartão, Apple Pay, Google Pay, múltiplos gateways e ProPresenter pertencem a fases posteriores, salvo decisão explícita de antecipação.
+O **MVP comercial** deste módulo inclui oferta via Pix com Mercado Pago, Gift Entry básico, controle de destinos, consentimento LGPD nos formulários e integração documental com Financeiro. Cartão, Apple Pay, Google Pay, múltiplos gateways, ProPresenter e criação/match de Pessoas pertencem a fases posteriores, salvo decisão explícita de antecipação.
 
 ---
 
@@ -64,7 +66,7 @@ Adiciona keywords nas notas dos slides. Não acessa o painel da plataforma diret
 Acessa dashboard de receitas, exporta relatórios, realiza gift entry de doações físicas, reconcilia com módulo Financeiro.
 
 ### Visitante / Membro (usuário final — sem login)
-Toca o TAP, age na tela que abre. Não cria conta. Não faz login. Pode opcionalmente identificar-se em formulários pastorais.
+Toca o TAP, age na tela que abre. Não cria conta. Não faz login. Pode opcionalmente informar dados em formulários ou recibos, mas isso não gera cadastro de Pessoa/visitante no escopo atual.
 
 ---
 
@@ -136,7 +138,7 @@ Ex: Dízimo, Oferta, Missões, Construção. Opcional se só houver um fundo.
 **Passo 4 — Confirmação**
 Tela de confirmação com valor, fundo e instrução de recibo. Recibo enviado por e-mail se informado.
 
-**Dados mínimos coletados:** valor, fundo, método. Nome, e-mail e CPF são opcionais e usados para recibo, relatório anual e vínculo voluntário com Pessoa.
+**Dados mínimos coletados:** valor, fundo, método. Nome, e-mail e CPF são opcionais e usados para recibo e relatório anual quando aplicável. No escopo atual, esses dados não criam cadastro de Pessoa/visitante.
 
 **Ciclo de vida Pix:**
 - Estados: `created`, `pending`, `expired`, `confirmed`, `failed`, `cancelled`, `refunded`.
@@ -164,7 +166,7 @@ Quatro tipos na v1:
 | Decisão por Jesus | Nome, contato, tipo de decisão (primeira vez, reconciliação, batismo) |
 | Inscrição em célula | Nome, telefone, bairro/região preferida, disponibilidade de dia e horário |
 
-Dados capturados são encaminhados ao módulo Pessoas (criação ou match de perfil existente).
+Dados capturados permanecem como registros operacionais do TAP no escopo atual. Eles não criam nem atualizam cadastro de Pessoas/visitantes.
 
 Todos os formulários pastorais exigem consentimento explícito antes do envio. O texto de consentimento é versionado e registra finalidade, retenção e compartilhamento com a igreja.
 
@@ -172,7 +174,7 @@ Regras:
 - Pedido de oração pode ser anônimo e, nesse caso, não cria Pessoa.
 - Dados sensíveis pastorais exigem permissão específica para leitura.
 - Comunicação não vê conteúdo individual sensível de oração ou decisão.
-- Encaminhamento ao módulo Pessoas ocorre via contrato de intake, com estado `matched`, `created` ou `needs_review`.
+- Integração futura com Pessoas exige contrato próprio antes de qualquer criação, match ou revisão de cadastro.
 
 ### 4.6 Integração ProPresenter
 
@@ -229,13 +231,9 @@ Cada evento inclui `event_id`, `schema_version`, `tenant_id`, `campus_id`, `occu
 
 #### Pessoas
 
-Formulários pastorais publicam `tap.person_intake.submitted`. O módulo Pessoas decide criação, match ou revisão.
+No escopo atual, TAP não publica intake para criação ou match de Pessoas. Formulários pastorais e inscrições permanecem como registros operacionais do TAP, com consentimento e retenção definidos.
 
-Resultado esperado:
-- `matched`: pessoa existente vinculada
-- `created`: pessoa criada com consentimento
-- `needs_review`: possível duplicidade
-- `anonymous`: submissão sem criação de pessoa
+Integração futura com Pessoas exige contrato próprio antes de implementação, incluindo regras de match, revisão de duplicidade, consentimento e auditoria.
 
 #### Comunicação
 
