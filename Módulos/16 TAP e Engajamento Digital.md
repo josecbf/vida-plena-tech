@@ -12,7 +12,9 @@ Planejamento detalhado: [[000 - Hub TAP e Engajamento Digital]]
 
 ## Resumo
 
-Transformar cada toque de celular numa ação intencional — oferta, inscrição, oração, conexão — sem app, sem login, sincronizado com o que acontece no palco.
+Transformar cada toque de celular numa ação intencional — oferta, inscrição, pedido de oração ou conexão — sem app, sem login, sincronizado com o que acontece no palco.
+
+TAP é um facilitador de inscrições e doações. No escopo atual, ele não é fonte de cadastro de pessoas ou visitantes.
 
 ## Problema
 
@@ -32,15 +34,16 @@ A igreja perde dezenas de momentos de engajamento em cada culto porque o caminho
 - Gift entry para doações físicas (dinheiro, cheque, Pix externo)
 - Dashboard de engajamento e receitas
 - Consentimento LGPD versionado e auditoria para dados sensíveis
-- Contratos explícitos com Financeiro e Pessoas
+- Contrato explícito com Financeiro para eventos de doação e Gift Entry
+- Integração com Pessoas apenas em fase futura, após contrato próprio
 
 ## Conexões
 
-- Pessoas
 - Financeiro
 - Eventos
 - Comunicação
 - Grupos de Crescimento
+- Pessoas (futuro)
 - Core Platform (multi-tenant, campus, permissões)
 
 ## Guardrails
@@ -49,5 +52,5 @@ A igreja perde dezenas de momentos de engajamento em cada culto porque o caminho
 - Não exigir app ou login para dar ou se conectar
 - Não duplicar módulo Financeiro — integrar via eventos de domínio
 - Não armazenar dados de cartão — delegar integralmente ao gateway
-- Não criar cadastro de pessoa sem consentimento explícito do visitante
+- Não criar cadastro de pessoa ou visitante no escopo atual
 - Não iniciar codificação antes de resolver contratos, permissões e invariantes do módulo
