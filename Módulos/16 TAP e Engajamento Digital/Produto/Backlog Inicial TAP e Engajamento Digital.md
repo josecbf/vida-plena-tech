@@ -165,3 +165,12 @@ tags:
 
 - Como tesoureiro, quero lançar manualmente uma doação em dinheiro com valor, fundo e data, para que o relatório financeiro seja completo.
 - Como tesoureiro, quero agrupar lançamentos de um mesmo culto em um lote, para facilitar conciliação.
+
+### E17 — Pacotes e billing
+
+- Como owner, quero que o plano Essencial tenha pelo menos Dízimo, Oferta e Missões, para usar o TAP em culto real sem limite artificial.
+- Como tesoureiro de igreja pequena, quero Gift Entry básico no Essencial, para registrar contribuições físicas sem precisar contratar plano avançado.
+- Como admin, quero receber alerta ao chegar perto do limite do plano, para agir antes de bloquear configuração.
+- Como visitante, quero que um TAP já publicado continue funcionando durante o culto mesmo se a organização atingir limite comercial, para não perder o momento de doação ou inscrição.
+- Como owner, quero uma janela de graça após atingir limite, para fazer upgrade ou reduzir uso sem derrubar fluxos públicos.
+- Como sistema, quero bloquear apenas criação/edição administrativa acima do limite, para preservar doações pendentes e destinos ativos.

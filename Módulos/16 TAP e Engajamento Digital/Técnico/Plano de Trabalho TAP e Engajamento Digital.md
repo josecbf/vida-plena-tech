@@ -112,6 +112,9 @@ Entregar valor real o mais cedo possível. A Fase 1 já deve ser utilizável em 
 **Entregáveis:**
 - Onboarding guiado (wizard 4 passos)
 - Três pacotes com feature flags (Essencial, Crescimento, Missão)
+- Plano Essencial com pelo menos 3 fundos e Gift Entry básico
+- Janela de graça para limites comerciais sem derrubar TAP público em culto
+- Alertas administrativos de limite em 80%, 100% e expiração da janela
 - Trial de 14 dias automático
 - Billing com Stripe Billing (assinatura mensal e anual)
 - Upgrade/downgrade self-service
@@ -122,7 +125,7 @@ Entregar valor real o mais cedo possível. A Fase 1 já deve ser utilizável em 
 - Estratégia de NF brasileira para assinatura SaaS
 - Base de conhecimento e documentação pública
 
-**Critério de aceite:** Uma organização consegue se cadastrar, completar o onboarding, configurar um TAP e receber uma doação sem intervenção da equipe da plataforma.
+**Critério de aceite:** Uma organização consegue se cadastrar, completar o onboarding, configurar um TAP e receber uma doação sem intervenção da equipe da plataforma. Ao atingir limite comercial, o sistema bloqueia criação administrativa acima do limite, mas mantém TAP público, doações pendentes e lote aberto funcionando durante a janela de graça.
 
 **Duração estimada:** 3–4 semanas
 
