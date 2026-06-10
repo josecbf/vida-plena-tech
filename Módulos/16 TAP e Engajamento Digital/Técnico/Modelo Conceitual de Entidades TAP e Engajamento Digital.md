@@ -123,7 +123,11 @@ organization_id: uuid → Organization
 name: string
 description: string
 current_destination_id: uuid → Destination (nullable)
+default_destination_id: uuid → Destination (nullable)
+status: active | inactive | archived
 created_at: timestamp
+updated_at: timestamp
+archived_at: timestamp (nullable)
 ```
 
 ### TapDevice
@@ -133,10 +137,13 @@ tap_group_id: uuid → TapGroup
 organization_id: uuid → Organization
 name: string
 physical_location: string
-url: string (gerada: {slug}.plataforma.com.br/t/{id})
+public_id: string (não enumerável)
+url: string (gerada: {slug}.plataforma.com.br/t/{public_id})
 qr_code_url: string
-is_active: boolean
+status: active | inactive | archived
 created_at: timestamp
+updated_at: timestamp
+archived_at: timestamp (nullable)
 ```
 
 ### Destination
@@ -378,6 +385,10 @@ created_at: timestamp
 18. Toda entidade operacional carrega `organization_id` e, quando fizer sentido, `campus_id`
 19. Nenhuma FK pode permitir referência cruzada entre organizações; usar FK composta ou validação transacional
 20. CPF e credenciais de gateway são criptografados em repouso
+21. `TapDevice.public_id` é único, não enumerável e nunca editado manualmente
+22. `TapDevice.url` é derivada de `Organization.slug` + `public_id`, não digitada pelo operador
+23. `TapGroup.default_destination_id` e `current_destination_id` devem pertencer ao mesmo tenant e respeitar escopo de campus
+24. `status = archived` preserva histórico e impede uso operacional sem apagar registros relacionados
 
 ## Contratos de domínio
 
