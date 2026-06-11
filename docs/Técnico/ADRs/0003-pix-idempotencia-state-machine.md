@@ -20,6 +20,7 @@ TAP não é ledger, mas precisa capturar pagamento com segurança e publicar eve
 3. **Tratar a corrida no limite do TTL** (job de expiração vs webhook "pago") — pagamento tardio pós-expiração reconciliado, nunca perdido.
 4. **Reconciliação periódica:** comparar gateway × banco, reprocessar eventos perdidos, alertar webhook parado, relatório de divergência.
 5. **Valor do Pix sempre definido no servidor** (nunca confiar no cliente).
+6. **Rate limiting + WAF na borda do TAP** (Gemini + Claude): moeda NFC é pública; sem isso um bot estoura cota de edge/DB. Limite por IP e por device; bot-check (ex.: Turnstile) na iniciação de pagamento; unique constraint impecável na inbox para o caso de webhook duplicado sob concorrência.
 
 ## Em aberto
 - **PSP/economia:** Mercado Pago ~0,49% (CNPJ) é sensível para doação. Avaliar PSP alternativo (Efí etc.) ou **Pix direto via banco** com tarifa de entidade sem fins lucrativos. Decisão de produto + técnica.

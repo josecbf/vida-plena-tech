@@ -9,68 +9,70 @@ atualizado: 2026-06-11
 
 # Validação de Arquitetura — Consolidação (GPT · Claude · Gemini)
 
-Síntese das três rodadas de validação externa. Regra: **convergência = risco real (agir); divergência = decisão a registrar como ADR.**
+Síntese das rodadas de validação externa. Regra: **convergência = risco real (agir); divergência = decisão a registrar como ADR.**
 
-> Cobertura dos prompts: **GPT** e **Claude** responderam ao prompt de **infraestrutura** ([[Arquitetura por Fases e Opcoes]]). **Gemini** respondeu ao prompt de **identidade plugável** ([[Modularidade e Identidade Plugavel]]). Logo, na infra há convergência **GPT+Claude**; na identidade o Gemini é voz única. **Pendente:** rodar o prompt de infra no Gemini e o de identidade no GPT/Claude para fechar a cobertura 3×2.
-
----
-
-## Trilha A — Infraestrutura (GPT + Claude)
-
-### Convergências → risco real, agir (vira ADR "Aceito")
-
-1. **O caminho de ESCRITA do destino ativo do TAP está sub-especificado.** Ambos: o read (Edge→Redis) está ok; falta o write/sync — fonte da verdade, propagação, cache stale, versionamento, kill switch. Cache velho no minuto da oferta = pessoa cai no destino errado (mexe com dinheiro). Exigem registro versionado: `tap_group_id, active_destination_id, version, effective_from, updated_by, tenant_id` + TTL curto + write-through + fallback seguro + auditoria + load test com troca durante pico. → **ADR-0002**.
-2. **Idempotência do Pix ponta-a-ponta + máquina de estados, não só webhook.** Ambos: idempotência na criação do QR, no webhook (MP manda duplicado/fora de ordem), e no evento p/ Financeiro. State machine `created→qr_generated→pending→paid|expired|cancelled|failed|refunded`. Corrida crítica: expiração vs webhook "pago" no limite do TTL. Reconciliação obrigatória (webhook é notificação, não verdade). → **ADR-0003**.
-3. **Pooling de Postgres obrigatório desde a Fase 0.** O storm de conexões não está no redirect (já saiu do Postgres) — está no **caminho de pagamento/escrita** no pico. Supabase Micro ~60 conexões; usar **Supavisor transaction mode** (porta 6543), ciente de que isso quebra prepared statements/`LISTEN-NOTIFY` (afeta config do ORM e do relay do outbox). → **ADR-0001 / ADR-0004**.
-4. **RLS é seguro para começar, mas service-role é footgun.** Em rotas de backend é tentador usar service-role, que **bypassa RLS** → cada query precisa de `WHERE tenant_id` manual → um esquecido = vazamento entre igrejas (catastrófico com dado pastoral/LGPD). Exigem: contexto de tenant na sessão + RLS contra ele + **testes automatizados de isolamento cross-tenant** em todo PR que cria tabela tenant-scoped. → **ADR-0004**.
-5. **Falta um worker persistente.** Funções serverless têm teto de execução; relay do outbox, ETL→BI e reconciliação Pix não cabem de forma confiável. Claude propõe **"Opção 1.5"**: serverless para UI/API/redirect + **um worker sempre-ligado** (Cloud Run/Fly/Railway) para esses jobs. → **ADR-0001**.
-6. **Custo da Fase 1 (igreja âncora) subestimado.** Ambos: $60–120 é piso de MVP, mas **a âncora de 24k não é carga de Fase 0**. Estimativa realista para a âncora: **~$250–700/mês** com backup/PITR, e-mail, observabilidade, compute do Supabase, egress, staging. → ajustar [[Arquitetura por Fases e Opcoes]].
-7. **Faltam itens críticos da Fase 0** (ambos): e-mail/SMS transacional (recibo/avisos); **rate limiting no edge** (moeda NFC é pública) + **valor do Pix sempre server-side** (nunca confiar no cliente); reconciliação de pagamento; runbook de "modo domingo" (quem troca destino, kill switch, o que fazer se Redis/MP/internet caírem). → **ADR-0003 / ADR-0001**.
-8. **Super-engenheirado para a Fase 0** (ambos): BigQuery com streaming completo (começar com Postgres+views/export batch), adapters de identidade plugável, microsserviços, Pub/Sub/Kafka. Manter só o **outbox** (higiene barata). → reflete em [[Arquitetura por Fases e Opcoes]].
-9. **Multi-tenant RLS compartilhado escala longe** (ambos): promover a schema/DB dedicado por **compliance/SLA/contrato enterprise ou noisy-neighbor**, nunca por tamanho (24k é pequeno). → **ADR-0004**.
-10. **Outbox sustenta muito longe** (ambos; Claude: "provavelmente nunca precisa Kafka"). Sinais p/ broker: lag em horário normal, fan-out pesado, replay, consumidores externos, serviços separados. Antes do broker: `LISTEN/NOTIFY` ou logical decoding p/ matar latência de polling. → **ADR-0001**.
-
-### Divergências / decisões em aberto → ADR "Proposto"
-
-- **Serverless puro (Op.1) vs híbrido com worker (Op.1.5):** GPT aceita Op.1 nas Fases 0–1; Claude pede o worker persistente já cedo. (Convergem em "vai precisar de worker"; divergem no quando.) → **ADR-0001**.
-- **Fonte da verdade do destino ativo do TAP:** Redis-as-source (write-through p/ Postgres) **vs** Postgres-as-source (push/invalidate p/ Redis). → **ADR-0002**.
-- **service-role vs JWT do usuário no backend.** → **ADR-0004**.
-- **A âncora entra na Fase 0 ou Fase 1?** Muda custo e prontidão exigida. → decisão de roadmap.
-- **PSP/economia do Pix:** Mercado Pago ~0,49% (CNPJ) é sensível para doação; avaliar PSP alternativo ou Pix direto via banco com tarifa de entidade sem fins lucrativos. → **ADR-0003**.
-- **Residência de dados + LGPD:** região de Supabase/Vercel/BigQuery; dado pastoral de brasileiros em região US = transferência internacional. Event store append-only + BI brigam com o **direito ao esquecimento** → exige **crypto-shredding/pseudonimização desde o design do evento**. → **ADR-0006**.
+> **Cobertura:** Infra (prompt [[Arquitetura por Fases e Opcoes]]) = **3/3** (GPT, Claude, Gemini). Identidade (prompt [[Modularidade e Identidade Plugavel]]) = **2/3** (Gemini, GPT) — **falta rodar no Claude**.
 
 ---
 
-## Trilha B — Identidade plugável (Gemini)
+## Trilha A — Infraestrutura (GPT + Claude + Gemini) — cobertura completa
 
-O Gemini **desafia a minha própria proposta** (Native/External/Lite). Honestamente, os pontos são bons:
+### Convergências (2+ IAs) → risco real, agir
 
-1. **Cache da `PersonRef` federada** = consistência distribuída difícil (webhook falho → dado stale, ou matrícula ativa de quem perdeu acesso na origem).
-2. **Lite incha** → vira CRM concorrente (já era o risco que eu mesmo apontei).
-3. **LGPD operador:** guardar `PersonRef` obriga propagar exclusão em tempo real do hospedeiro.
-4. **JIT + mapeamento de tenant externo:** erro de validação de token cruza matrículas entre igrejas.
-5. **Merge Lite→Native** = pesadelo de FK/órfãos sem event sourcing rígido.
+1. **Pooling de Postgres no caminho de pagamento é o risco nº1 — os TRÊS concordam.** Não é o redirect (já saiu do Postgres); é o momento da oferta: 500+ pessoas gerando Pix quase no mesmo segundo → tempestade de conexões → 5xx na tela de oferta. **Supavisor transaction mode obrigatório** desde a Fase 0 (e isso quebra prepared statements/`LISTEN-NOTIFY` → afeta ORM e relay do outbox). → **ADR-0001 / ADR-0004**.
+2. **Caminho de ESCRITA/consistência do destino do TAP** (os três). Gemini reforça: lag de replicação do Upstash global pode servir destino velho na primeira onda; e falta **confirmação em tempo real** (SSE/WebSocket/Supabase realtime) de que a troca de destino chegou. → **ADR-0002**.
+3. **Idempotência Pix ponta-a-ponta + state machine + reconciliação** (os três). Gemini: lock na inbox sob concorrência → evento financeiro duplicado se a unique constraint não for impecável. → **ADR-0003**.
+4. **RLS seguro p/ começar, mas com dois cuidados:** service-role bypassa RLS (GPT+Claude); **políticas RLS com JOINs complexos degradam sob carga** (Gemini) → manter políticas simples, sem JOIN cross-módulo. → **ADR-0004**.
+5. **BigQuery no dia 1 é over-engineering** (os três) → começar com **Postgres views/read replicas**; warehouse na Fase 2. → [[Arquitetura por Fases e Opcoes]].
+6. **Custo subestimado** (os três). Gemini é o mais duro: **~US$250–300 já no início** por causa dos picos/overages, não US$60–120. GPT/Claude: Fase 1 âncora ~US$250–700. Ocultos: egress, e-mail transacional com IP dedicado, WAF/Cloudflare. → ajuste já refletido na arquitetura.
+7. **Rate limiting + WAF no TAP** (Gemini forte + Claude). Moeda NFC é pública = alvo de abuso; sem isso, um bot estoura cota de edge/DB. + **valor do Pix sempre server-side**. → **ADR-0003**.
+8. **LGPD: direito ao esquecimento × event sourcing/BigQuery imutável** (Gemini + Claude) → **crypto-shredding/pseudonimização** desde o design do evento. → **ADR-0006**.
+9. **Outbox sustenta longe; sinal p/ broker** (os três). Gemini concreto: quando o worker do outbox passa a roubar CPU das transações do culto, ou WAL incha. → **ADR-0001**.
+10. **Worker persistente p/ jobs longos** (Claude forte; Gemini confirma: ETL/relatórios estouram timeout da Vercel). → **ADR-0001**.
 
-**Veredito do Gemini:** o **Lite quebra a regra de ouro na prática** (ter tabelas/validação/edição de pessoa = reimplementar gestão de pessoas).
+### Divergência principal (a única real, agora 2×1) → ADR-0001
 
-**Alternativas que ele propõe (e que eu acho superiores ao Lite):**
-- **Alt 1 — Pessoas Core sempre embarcado, gating comercial:** todo deploy leva o módulo Pessoas; quando Ensino é vendido sozinho, o cliente leva Pessoas com UI "capada" e trava de billing. Modelo de dados único, **zero migração**, não quebra a regra de ouro. Contra: leve overhead comercial/UX.
-- **Alt 2 — Zero-State (proxy):** no modo federado, guardar só o `personId` opaco; **nunca materializar `PersonRef`** no Postgres; a UI enriquece em runtime via gateway que consulta a plataforma-mãe. Consistência perfeita + zero LGPD sobre cadastro. Contra: latência do hospedeiro impacta o serviço.
+**Serverless (Op.1) vs Cloud Run/containers (Op.2):**
+- **GPT:** Opção 1 serve p/ Fase 0–1, desde que o redirect saia do monólito.
+- **Claude:** "Opção 1.5" — serverless + **um worker persistente**.
+- **Gemini:** **Opção 2 (Cloud Run)** — tráfego de igreja é "coreografado" (rajada sincronizada), o pior caso p/ serverless (cold start + connection storm); Cloud Run mantém conexões quentes.
 
-**Recomendação consolidada (revisão da minha proposta):** trocar o **Lite** pela **Alt 1** (Native sempre embarcado + gating comercial) e implementar o **External** como **SSO/OIDC + JIT mínimo / Zero-State** (sem SCIM/webhook/cache na v1). Adiar SCIM, sync bidirecional e merge. → **ADR-0005**.
-
-> Pendência: rodar o prompt de identidade no GPT e no Claude para confirmar/contestar a recomendação do Gemini antes de fechar o ADR-0005.
+**Onde os três concordam (e que resolve metade da briga):** (a) o redirect vai p/ a **borda** — **Cloudflare Workers + KV** é o específico favorito (Gemini: "mais rápido, maduro e barato que Vercel Edge + Upstash"); (b) o **caminho de escrita/pagamento precisa de conexões quentes** (seja Cloud Run, seja worker persistente + pooling agressivo). O ponto do Gemini tem força porque o caminho síncrono mais perigoso — gerar Pix no pico da oferta — é exatamente uma rajada sincronizada batendo no Postgres. → **decisão do dono em ADR-0001**.
 
 ---
 
-## Premissas que mudam a conclusão (a responder)
+## Trilha B — Identidade (Gemini + GPT; falta Claude)
 
-Da união das três rodadas, as decisões de maior alavancagem:
-1. **Fonte da verdade do destino ativo do TAP** (Redis vs Postgres).
-2. **service-role vs JWT** no backend.
-3. **A âncora entra na Fase 0 ou na Fase 1?**
-4. **Região/residência de dados** (LGPD) e estratégia de exclusão (crypto-shredding).
-5. **Identidade:** adotar Alt 1 (gating comercial) no lugar do Lite?
-6. **PSP do Pix** (taxa) e domínio da URL do NFC (Videira vs igreja).
+### Convergência forte (2/2)
 
-Ver ADRs em [`ADRs/`](ADRs/).
+1. **O Lite ameaça/quebra a regra de ouro na prática.** Ambos: só se sustenta se for um **kernel de identidade mínimo**, nunca um "Pessoas básico". Exigem **proibições arquiteturais explícitas** (sem família, tags, comunicação, histórico pastoral, campos customizados, CRM, busca rica).
+2. **Substituir o Lite por um núcleo mínimo de identidade obrigatório.** Gemini: "Native sempre embarcado + gating comercial". GPT: "Identity Kernel obrigatório". **É a mesma ideia** — um núcleo (`tenantId + localPersonId + identityLinks + status + consentimento mínimo + lifecycle`), com o Pessoas completo acima dele.
+3. **MVP = só Native** atrás do contrato. Adiar External/Federado, SCIM, webhooks, embed (SDK/iframe), múltiplos providers por tenant, troca dinâmica e merge automático.
+4. **Matriz LGPD controlador×operador por modo** é obrigatória — o Ensino gera dados próprios (matrícula, progresso, certificado, dados de criança), então "o hospedeiro é dono da identidade" NÃO resolve LGPD.
+
+### Refinos fortes do GPT (decisões de design)
+
+- **`PersonRef` é fraco demais** como base operacional → introduzir **`localPersonId` + `IdentityLink`**. Matrícula/progresso/certificado apontam para **`localPersonId`, nunca para `externalId`**.
+- **Separar contratos** em vez de um `PeopleProvider` que mistura tudo: `Identity` (auth/SSO), `Profile` (nome/avatar), `PersonDirectory` (pessoa local/status), `Authorization` (papéis/escopos), `Consent` (LGPD), `Audit`.
+- **Falta um contrato de permissão.** A regra de ouro diz "não reinventar permissão", mas a proposta é silenciosa sobre autorização (quem pode criar curso, ver progresso, matricular, ver dado de criança, por campus). **Gap a endereçar.**
+- **Lifecycle rico de eventos** (`linked/unlinked/merged/split/deactivated/reactivated/deleted/anonymized`, `consent.revoked`) — `person.merged` sozinho corrompe histórico.
+- **Testes de arquitetura:** Ensino não importa tabela interna de Pessoas, só o contrato.
+
+### Decisão consolidada de identidade → ADR-0005 (sobe para "Aceito na direção")
+
+Com Gemini + GPT convergindo: **(1) núcleo mínimo de identidade obrigatório (localPersonId + IdentityLink); (2) descontinuar o "Lite como mini-Pessoas"; (3) MVP só Native atrás do contrato; (4) adiar toda federação; (5) separar identidade/perfil/permissão/consentimento.** Confirmar com Claude antes de marcar "Aceito" pleno.
+
+---
+
+## Decisões a fechar (ADRs)
+
+| ADR | Tema | Situação |
+|---|---|---|
+| 0001 | Plataforma e escala | **Aberto:** serverless (GPT) vs Cloud Run (Gemini) vs híbrido+worker (Claude) p/ o caminho de pagamento. Convergência: redirect na borda (Cloudflare Workers+KV) + conexões quentes no write. |
+| 0002 | Destino ativo do TAP | **Aberto:** fonte da verdade (Redis vs Postgres) + confirmação realtime. |
+| 0003 | Pix idempotência | Aceito; PSP + rate limiting/WAF a confirmar. |
+| 0004 | Isolamento multi-tenant | Aceito; service-role×JWT em aberto; manter RLS simples (sem JOIN). |
+| 0005 | Identidade plugável | **Convergência 2/2:** kernel mínimo + Native-only + adiar federação. Falta Claude. |
+| 0006 | Residência/LGPD | Reforçado (Gemini+Claude): região BR + crypto-shredding. |
+
+Falta: rodar **identidade no Claude** para fechar 3×2.
