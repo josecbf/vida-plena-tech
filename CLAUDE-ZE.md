@@ -62,6 +62,12 @@ pnpm --filter @videira/demo build # valida produção
 - `agents/` + `.claude/agents/` — agentes de IA
 - `ze-start.md`, `CLAUDE-ZE.md` — controle
 
+## Documentos de análise e arquitetura (11/06)
+
+- `docs/Produto/Analise de Modulos.md` — quais módulos vendem sozinhos (Tier A), via provider externo/Lite (Tier B) ou sempre dependem da Pessoas canônica (Tier C); leitura land & expand.
+- `docs/Técnico/Arquitetura por Fases e Opcoes.md` — proposta de infra de baixo custo e escalável, em fases (0–3), começando por Pessoas/Ensino/TAP. Opção 1 (recomendada): monólito modular **serverless-first** (Next.js/Vercel + Postgres RLS + redirect do TAP na borda + outbox). Opção 2: containers. Opção 3: microsserviços (não recomendada agora). Âncora: igreja de 24k pessoas/4k membros/8 pastores.
+- `docs/Técnico/Prompt - Validacao de Arquitetura por Fases.md` — prompt autocontido para validar nas 3 IAs (GPT, Gemini, Claude).
+
 ## Frente de arquitetura (em discussão)
 
 Requisito novo: módulos satélites (ex.: **Ensino 02**) precisam ser **contratados isoladamente** e **plugados em outra plataforma** que traz as pessoas — sem quebrar a regra de ouro (Pessoas é o centro).
