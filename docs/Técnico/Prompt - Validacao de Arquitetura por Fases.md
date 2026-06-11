@@ -28,17 +28,19 @@ Você é um arquiteto de software/infra sênior, cético e direto, especialista 
 ## Característica crítica do módulo TAP
 TAP usa dispositivos NFC físicos ("moedas") com REDIRECT DINÂMICO: a URL gravada não muda, mas o destino (oferta via Pix, formulário pastoral, URL externa, landing própria) muda em tempo real, sincronizado com o palco (ProPresenter). Metas duras: redirect <200ms p95 sob 500+ toques simultâneos no momento da oferta; pagamento Pix com QR dinâmico, TTL e webhook idempotente; integração com o módulo Financeiro só via eventos de domínio idempotentes (TAP não é ledger). TAP não cria cadastro de pessoa no escopo atual.
 
-## Arquitetura proposta (Opção 1 — recomendada)
-- Monólito modular em Next.js (App Router) na Vercel (UI + API). Módulos como pastas/rotas.
-- Postgres gerenciado com RLS; multi-tenant em banco/schema COMPARTILHADO com tenant_id em tudo; isolamento dedicado (schema/DB) só para enterprise depois.
-- Redirect do TAP isolado na BORDA (Edge Function + cache Redis/KV guardando o destino ativo por grupo TAP) — não bate no Postgres a cada toque.
-- Pagamentos: gateway Pix (Mercado Pago); webhook idempotente em tabela inbox; jobs (cron + fila gerenciada tipo QStash) para expiração de Pix e retries.
-- Eventos de domínio via TRANSACTIONAL OUTBOX no Postgres (sem Kafka no início); consumidores com inbox idempotente.
-- Fases: (0) MVP barato dos 3 módulos; (1) hardening p/ 1ª igreja grande (pooling, cache, CDN, LGPD, load test do redirect); (2) demais módulos + tiers de tenancy + adapters de identidade plugável; (3) read replicas, extrair redirect/payments como serviços, data warehouse p/ BI.
+## Arquitetura proposta (Opção 1 — recomendada), com serviços nomeados
+- Monólito modular em Next.js (App Router) na **Vercel** (UI + API). Módulos como pastas/rotas.
+- Banco + Auth: **Supabase** (Postgres + RLS + Auth). Multi-tenant em banco/schema COMPARTILHADO com tenant_id; isolamento dedicado (schema/DB) só para enterprise depois.
+- Redirect do TAP isolado na BORDA: **Vercel Edge Functions + Upstash Redis** (destino ativo por grupo TAP em cache) — não bate no Postgres a cada toque.
+- Pagamentos: **Mercado Pago** (Pix); webhook idempotente em tabela inbox; jobs (**Vercel Cron + Upstash QStash**) para expiração de Pix e retries.
+- Eventos de domínio via TRANSACTIONAL OUTBOX no Postgres (sem Kafka no início); consumidores com inbox idempotente; eventos vão para **Google BigQuery** (BI/IA).
+- Observabilidade: **Sentry + Axiom**.
+- Fases: (0) MVP barato dos 3 módulos; (1) hardening p/ 1ª igreja grande (pooling, cache, CDN, LGPD, load test do redirect); (2) demais módulos + tiers de tenancy + adapters de identidade plugável; (3) read replicas, extrair redirect/payments como serviços, BigQuery p/ BI.
+- Custo de infra estimado: Fase 0 ~US$60–120/mês; Fase 1 ~US$150–400/mês; escala ~US$1.000–5.000/mês.
 
 ## Alternativas consideradas
-- Opção 2: mesmo desenho lógico, mas em CONTAINERS (NestJS/Node em Fly/Render/ECS) com conexões Postgres persistentes, Redis e fila BullMQ. Prós: sem cold start, portável, previsível. Contras: piso de custo fixo, mais infra para operar.
-- Opção 3: microsserviços event-driven com broker desde o início. Prós: isolamento/escala independente. Contras: caro e lento para começar, complexidade operacional alta; contradiz a decisão de monólito modular.
+- Opção 2 (GCP-nativo): CONTAINERS em **Cloud Run** + **Cloud SQL for PostgreSQL** + **Memorystore (Redis)** + **Pub/Sub** + **BigQuery**, redirect via **Cloudflare Workers** ou **Cloud CDN**. Prós: sem cold start, conexões persistentes, BI nativo. Contras: piso de custo fixo maior (~US$120–250/mês na Fase 0), mais infra para operar.
+- Opção 3: microsserviços event-driven (**GKE** + **Pub/Sub/Kafka**, banco por serviço) desde o início. Prós: isolamento/escala independente. Contras: caro (~US$700–2.000+/mês já no início) e complexo; contradiz a decisão de monólito modular.
 
 ## O que eu quero de você
 1. Veredito em uma frase: a Opção 1 é sólida, arriscada ou furada para este contexto?
@@ -48,7 +50,8 @@ TAP usa dispositivos NFC físicos ("moedas") com REDIRECT DINÂMICO: a URL grava
 5. Especificamente: serverless (Opção 1) vs containers (Opção 2) para ESTE caso — qual você escolheria e por quê? O redirect <200ms p95 sob pico de domingo muda sua escolha?
 6. Estratégia de multi-tenant: RLS compartilhado é seguro/escalável o suficiente para começar e ir até igrejas grandes? Quando exatamente promover para schema/DB dedicado?
 7. A escolha de transactional outbox (em vez de broker) se sustenta até onde? Qual o sinal de que precisa virar Kafka/SQS?
-8. Recomendação final priorizada: o que fazer na Fase 0, o que adiar.
+8. Custo: as estimativas (Fase 0 ~US$60–120/mês na Opção 1) são realistas para 2026? O que está subestimado (egress, suporte, e-mail transacional, HA)?
+9. Recomendação final priorizada: o que fazer na Fase 0, o que adiar.
 
 Seja específico e técnico. Aponte premissas não declaradas que mudam a conclusão. Se faltar informação para julgar algo, diga qual.
 ```

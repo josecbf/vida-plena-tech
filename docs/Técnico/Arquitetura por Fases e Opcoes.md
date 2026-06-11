@@ -51,15 +51,23 @@ Stack coerente, barata para começar, que escala por uso.
                        └─▶ Outbox (tabela) ─▶ consumidores (Financeiro, Comunicação)
 ```
 
-**Componentes:**
-- **App + API:** Next.js na Vercel (já é a stack da demo). Um único deploy, módulos como pastas/rotas.
-- **Banco + Auth:** Postgres gerenciado com **RLS** e Auth inclusos (ex.: Supabase). Multi-tenant compartilhado com `tenant_id` em tudo.
-- **Redirect do TAP:** **Edge Function + cache (Redis/KV)** guardando o destino ativo por grupo TAP. Não bate no Postgres a cada toque → atende <200ms global e o pico do domingo.
-- **Landing pages do TAP (`own_page`):** estáticas/edge + CDN.
-- **Pagamentos:** gateway Pix; **webhook idempotente** gravado em tabela inbox; jobs para expiração/retry.
-- **Eventos de domínio:** **transactional outbox** no Postgres; consumidores leem e marcam processado (inbox idempotente no Financeiro).
-- **Jobs/filas:** Cron da plataforma + fila gerenciada (ex.: QStash) — sem operar Kafka/Rabbit no início.
-- **Observabilidade:** Sentry + logs estruturados + dashboard básico.
+**Componentes e serviços nomeados:**
+| Camada | Serviço (recomendado) | Alternativa |
+|---|---|---|
+| App + API (Next.js) | **Vercel** | Cloudflare Pages / Netlify |
+| Banco + Auth | **Supabase** (Postgres + RLS + Auth) | **Neon** + Auth.js |
+| Redirect do TAP (borda) | **Vercel Edge Functions** + **Upstash Redis** | **Cloudflare Workers + KV** |
+| Cache / rate limit / sessão | **Upstash Redis** | Redis gerenciado |
+| Fila / cron | **Upstash QStash** + Vercel Cron | Inngest |
+| Pagamentos (Pix) | **Mercado Pago** (gateway abstrato) | Asaas, Stripe |
+| Storage de arquivos | **Supabase Storage** | Cloudflare R2 |
+| BI / Data Warehouse | **Google BigQuery** | ClickHouse Cloud |
+| Observabilidade | **Sentry** + **Axiom** | Logflare, Datadog |
+
+- **Multi-tenant:** banco/schema compartilhado, `tenant_id` em tudo + **RLS**.
+- **Redirect do TAP:** destino ativo por grupo TAP no **Upstash Redis**, servido por **Edge Function** — não bate no Postgres a cada toque (atende <200ms global e o pico do domingo).
+- **Eventos de domínio:** **transactional outbox** no Postgres; consumidores com inbox idempotente (Financeiro/Comunicação). Eventos também fluem para o **BigQuery** (BI/IA) por batch/stream.
+- **Pagamentos:** **webhook idempotente** em tabela inbox; jobs (QStash) para expiração de Pix e retries.
 
 **Fases de execução:**
 
@@ -70,7 +78,14 @@ Stack coerente, barata para começar, que escala por uso.
 | **2 — Multi-módulo + tenancy** | Largura + isolamento | Demais módulos como pacotes; **tiers de tenancy** (compartilhado p/ maioria, **schema/DB dedicado p/ enterprise**); adapters `PeopleProvider` (Native/External/Lite) p/ Ensino standalone |
 | **3 — Escala / rede de igrejas** | Profundidade | Read replicas, extrair **redirect** e **payments** como serviços (já isolados), fila robusta se a outbox não bastar, **data warehouse** alimentado pelos eventos p/ BI/IA |
 
-**Envelope de custo:** começa baixo (ordem de ~dezenas a baixas centenas de US$/mês somando app + Postgres + Redis + filas em planos iniciais), crescendo por uso. Sem custo fixo de cluster.
+**Estimativa de custo (US$/mês, ordem de grandeza — ver premissas no fim):**
+| Cenário | Composição | Custo infra |
+|---|---|---|
+| **Fase 0** — MVP, poucos pilotos | Vercel Pro $20 + Supabase Pro $25 + Upstash ~$10 + Sentry $0–26 + BigQuery ~$5 | **~$60–120** |
+| **Fase 1** — 1ª igreja grande (24k) | + overages Vercel, add-on de compute Supabase, mais cache/CDN | **~$150–400** |
+| **Escala** — centenas de igrejas | uso elevado em app + banco + cache + BI | **~$1.000–5.000** |
+
+Sem custo fixo de cluster; escala por uso. (Taxas de Pix do Mercado Pago são por transação e normalmente do gateway da própria igreja — fora do custo de infra.)
 
 **Prós**
 - Custo inicial mínimo; escala automática por uso.
@@ -86,23 +101,39 @@ Stack coerente, barata para começar, que escala por uso.
 
 ---
 
-## Opção 2 — Monólito modular em containers ("boring"/portável)
+## Opção 2 — Monólito modular em containers, GCP-nativo
 
-Mesma forma lógica (monólito modular + outbox + RLS), mas rodando em **containers** com conexões persistentes.
+Mesma forma lógica (monólito modular + outbox + RLS), mas em **containers** com conexões persistentes, usando a stack do **Google Cloud** (boa pedida se o BI em **BigQuery** já é desejado — fica tudo no mesmo cloud).
 
-- **App/API:** Node (NestJS) — ou Django/Rails — em containers (Fly.io / Render / Railway / ECS).
-- **Banco:** Postgres gerenciado (Neon/RDS/Cloud SQL). **Redis** gerenciado. Fila **BullMQ** (Redis) ou SQS.
-- **Redirect do TAP:** mesmo conceito, mas servido por um container leve + cache (ou ainda uma edge/CDN na frente).
+**Serviços nomeados (GCP):**
+| Camada | Serviço |
+|---|---|
+| App + API (NestJS/Node) | **Cloud Run** (min instances p/ zero cold start) — ou **GKE Autopilot** |
+| Banco | **Cloud SQL for PostgreSQL** (HA opcional) → **AlloyDB** ao escalar |
+| Cache / destino ativo TAP | **Memorystore for Redis** (ou Upstash p/ baratear no início) |
+| Eventos / fila | **Pub/Sub** (+ transactional outbox no Postgres) |
+| Redirect do TAP (borda) | **Cloudflare Workers** na frente, ou **Cloud CDN** + **Cloud Load Balancing** |
+| Storage | **Cloud Storage** |
+| Pagamentos (Pix) | **Mercado Pago** |
+| BI / Data Warehouse | **BigQuery** (nativo) |
+| Observabilidade | **Cloud Logging/Monitoring** + Sentry |
+
+**Estimativa de custo (US$/mês, ordem de grandeza):**
+| Cenário | Composição | Custo infra |
+|---|---|---|
+| **Fase 0** | Cloud Run min-instance ~$30 + Cloud SQL small ~$50 + Memorystore 1GB ~$35 + Pub/Sub ~$5 + LB/CDN ~$18 + BigQuery ~$5 | **~$120–250** |
+| **Fase 1** (24k) | Cloud SQL HA ~$200 + Cloud Run escalado ~$100 + Memorystore ~$50 + LB/egress ~$50 + BigQuery ~$20 | **~$350–800** |
+| **Escala** | múltiplas réplicas, AlloyDB, mais egress/BI | **~$1.500–6.000** |
 
 **Prós**
 - **Sem cold start**; **conexões Postgres persistentes** (melhor sob carga sustentada).
-- **Portável** e previsível; pouco lock-in; controle fino de runtime.
-- Jobs/workers longos são naturais (mesmo runtime).
+- **BI nativo** (BigQuery) no mesmo cloud; um único provedor para faturar/governar.
+- Portável (containers) e com controle fino de runtime; jobs/workers longos são naturais.
 
 **Contras**
-- **Custo fixo mínimo** (sempre há container ligado) — piso um pouco maior que serverless.
-- Mais infra para operar (deploy, scaling, healthchecks) desde o início.
-- Escala global do redirect exige CDN/edge na frente mesmo assim.
+- **Piso de custo fixo maior** que serverless (Cloud SQL HA + Memorystore + Load Balancer ficam sempre ligados).
+- Mais infra para operar (deploy, scaling, healthchecks, VPC) desde o início.
+- Escala global do redirect ainda pede CDN/edge na frente (Cloud CDN tem latência maior que Workers/Edge para esse caso).
 
 ---
 
@@ -110,13 +141,21 @@ Mesma forma lógica (monólito modular + outbox + RLS), mas rodando em **contain
 
 Separar Pessoas, Ensino, TAP, Financeiro como **serviços independentes** com **message broker** (Kafka/Rabbit/SQS) desde o início.
 
+**Serviços nomeados (GCP):** **GKE Autopilot** (orquestração) · **Pub/Sub** ou **Confluent/Managed Kafka** (mensageria) · **Cloud SQL/AlloyDB** por serviço · **BigQuery** (BI) · **Cloud Operations Suite** + Prometheus/Grafana (observabilidade) · **API Gateway / Apigee**.
+
+**Estimativa de custo (US$/mês, ordem de grandeza):**
+| Cenário | Composição | Custo infra |
+|---|---|---|
+| **Fase 0** | GKE nodes $150–400 + control plane ~$75 + múltiplos Cloud SQL $150–600 + Kafka/Confluent $200–1.000 + obs $100 | **~$700–2.000+** |
+| **Escala** | clusters maiores, mais serviços e bancos | **~$5.000–20.000+** |
+
 **Prós**
 - Isolamento forte e escala independente por serviço.
 - Alinha com "todos os módulos entrarão no ar" e com squads paralelos.
 - Falha de um serviço não derruba os outros.
 
 **Contras**
-- **Caro e lento para começar** — contradiz o requisito de custo inicial baixo.
+- **Caro e lento para começar** (piso de milhares de US$/mês) — contradiz o requisito de custo inicial baixo.
 - Complexidade operacional alta: transações distribuídas, consistência eventual, observabilidade difícil.
 - **Contradiz a decisão já registrada** em [[Arquitetura Plataforma]] ("não microsserviços prematuros").
 - Risco de over-engineering antes de ter clientes.
@@ -137,6 +176,21 @@ Separar Pessoas, Ensino, TAP, Financeiro como **serviços independentes** com **
 | Escala futura | 🟢 Incremental | 🟢 Boa | 🟢 Máxima |
 | Lock-in | 🟡 Algum | 🟢 Baixo | 🟢 Baixo |
 | Alinha c/ doc atual | 🟢 Sim | 🟢 Sim | 🔴 Não |
+
+## Custo consolidado (US$/mês de infra, ordem de grandeza)
+
+| Opção | Fase 0 (MVP) | Fase 1 (1ª igreja 24k) | Escala (centenas) |
+|---|---|---|---|
+| **1 — Serverless-first** | **$60–120** | $150–400 | $1.000–5.000 |
+| **2 — Containers GCP** | $120–250 | $350–800 | $1.500–6.000 |
+| **3 — Microsserviços** | $700–2.000+ | — | $5.000–20.000+ |
+
+**Premissas e ressalvas:**
+- Valores são **ordens de grandeza (2026)**, não cotação — variam com tráfego, egress, retenção e HA.
+- **Taxas de pagamento (Pix ~0,99% no Mercado Pago) são por transação** e normalmente ficam no gateway da própria igreja — fora do custo de infra acima.
+- **HA (alta disponibilidade) de banco ~dobra** o custo do Postgres; opcional na Fase 0, recomendado na Fase 1.
+- 24k pessoas = **dado pequeno**; o custo cresce por **concorrência do TAP e tráfego**, não por volume de cadastro.
+- Não inclui custos de equipe, suporte, domínio, e-mail transacional (ex.: Resend/SendGrid ~$0–20) nem ferramentas de produto.
 
 ## Recomendação
 
