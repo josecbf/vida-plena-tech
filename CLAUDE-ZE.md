@@ -70,9 +70,13 @@ Requisito novo: módulos satélites (ex.: **Ensino 02**) precisam ser **contrata
 - Costura já existe na demo: `Matricula.pessoaId` em `packages/types`.
 - Validação externa: prompt pronto para Gemini e GPT em `docs/Técnico/Prompt - Validacao de Arquitetura (Gemini e GPT).md`. Próximo: rodar nos dois, comparar e registrar divergências como ADR.
 
-## Pendente: Módulo 16
+## Módulo 16 — TAP e Engajamento Digital ✅ (trazido da main)
 
-O usuário vai trazer a documentação de um **novo módulo 16** (fonte ainda não fornecida — paste/arquivo/Drive). Quando chegar: criar `docs/Módulos/16 <Nome>/` no mesmo formato dos outros (Estratégia/Produto/Técnico + Hub) e entender o módulo. Atualizar README e `000 - Hub.md`.
+A doc do módulo 16 estava na `main` (não com o usuário). Trazida via **merge da `main` na `ze-start`** (commit `177a0ef`), com os arquivos novos realocados automaticamente para `docs/` (rename detection) — estrutura do monorepo preservada, zero conflito de conteúdo. O merge também trouxe revisões da main em PRD Ensino, Produto/*, Técnico/* e Auditoria/* (linha de produto "TAP").
+
+**O que é:** módulo de presença física + engajamento em tempo real. Dispositivos NFC ("moedas") com **redirect dinâmico** — a URL gravada não muda, o destino sim (oferta Pix, formulário pastoral, URL externa, landing própria), sincronizável com o ProPresenter. Referência de mercado: **Overflow** (mas com Pix nativo e contexto BR). É um **facilitador de ofertas/inscrições, não fonte de cadastro de pessoas**.
+
+**Decoupling (relevante p/ a frente de arquitetura):** TAP deliberadamente NÃO cria Pessoas (integração futura via contrato próprio) e NÃO reimplementa Financeiro (integra via eventos de domínio idempotentes `tap.donation.confirmed` etc.). É um caso real do princípio de identidade/contratos plugáveis.
 
 ---
 

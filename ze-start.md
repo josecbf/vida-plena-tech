@@ -118,7 +118,9 @@ Permitir que módulos satélites (ex.: Ensino 02) sejam contratados isolados e p
 - [ ] Rodar validação nos dois, comparar e registrar divergências como ADR
 - [ ] Aprovar contrato `PersonRef`/`PeopleProvider` e protocolo de federação
 
-### Fase 6 — Módulo 16 (novo)
-- [ ] Receber a documentação do módulo 16 (fonte do usuário)
-- [ ] Criar `docs/Módulos/16 <Nome>/` no mesmo formato (Estratégia/Produto/Técnico + Hub)
-- [ ] Atualizar `docs/000 - Hub.md` e README com o novo módulo
+### Fase 6 — Módulo 16 (novo) ✅
+Módulo 16 = **TAP e Engajamento Digital** (NFC + ofertas/Pix + formulários pastorais, estilo Overflow).
+- [x] Documentação trazida da `main` via merge (não estava com o usuário — estava na `main`)
+- [x] Realocada para `docs/Módulos/16 TAP e Engajamento Digital/` sem quebrar a estrutura (merge `177a0ef`)
+- [x] `000 - Hub.md` e README já contemplam o módulo 16 (vieram no merge)
+- [x] Módulo lido e analisado (ver resumo de entendimento na conversa)
