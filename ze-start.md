@@ -12,7 +12,7 @@ Branch de transformação do repositório de **documentação** para um **monore
 |---|---|
 | Estrutura | **Monorepo**: `docs/` + `apps/` + `packages/` + `agents/` (pnpm workspaces + Turborepo) |
 | Nome da plataforma | **Videira** (provisório — cores/nome podem mudar depois) |
-| Demo módulos 01+02 | **Protótipo navegável com dados mock** (Next.js + Tailwind + shadcn/ui), deploy Vercel, sem banco/login |
+| Demo módulos 01+02 | **Protótipo navegável com dados mock** (Next.js 15 + Tailwind v4 + componentes próprios), deploy Vercel, sem banco/login. Inclui área do aluno (visão do membro) |
 | Identidade visual | Mínima, gerada como código (tokens, tema, logo SVG) |
 | Agentes de IA | 1 agente por papel dos Squads em `agents/` + `.claude/agents/`, com modelo recomendado por papel |
 
@@ -90,7 +90,8 @@ videira/  (este repo)
 - [x] Mock data (`packages/types`)
 - [x] Telas Pessoas (lista, perfil, famílias, timeline)
 - [x] Telas Ensino (trilhas, curso, progresso)
-- [x] Build de produção valida (22 páginas, 0 erros)
+- [x] **Área do aluno** (alternador Equipe⟷Membro + Meus cursos + player de aula `/aluno/...`)
+- [x] Build de produção valida (23 páginas, 0 erros)
 
 ### Fase 4 — Deploy + polish · ~1–2h
 - [x] README com instruções de deploy (`apps/demo/README.md`)
@@ -103,9 +104,9 @@ videira/  (este repo)
 
 ## Próximos passos imediatos
 
-1. Fase 0 (reorg + scaffold) — em andamento
-2. Fase 2 (agentes) — destrava trabalho paralelo
-3. Fase 1 + Fase 3 (identidade + demo)
+1. **Deploy da demo na Vercel** (manual do dono — Root Directory = `apps/demo`).
+2. **Rodar os 2 prompts de validação** de arquitetura (GPT, Gemini, Claude) → registrar divergências como **ADR**.
+3. **Decidir cloud-base** (serverless Vercel+Supabase vs GCP-nativo com BigQuery).
 
 ---
 
@@ -124,3 +125,9 @@ Módulo 16 = **TAP e Engajamento Digital** (NFC + ofertas/Pix + formulários pas
 - [x] Realocada para `docs/Módulos/16 TAP e Engajamento Digital/` sem quebrar a estrutura (merge `177a0ef`)
 - [x] `000 - Hub.md` e README já contemplam o módulo 16 (vieram no merge)
 - [x] Módulo lido e analisado (ver resumo de entendimento na conversa)
+
+### Fase 7 — Análise de módulos + arquitetura de produção ✅ (docs)
+- [x] `docs/Produto/Analise de Modulos.md` — vendável sozinho × dependência de Pessoas (Tier A/B/C) + land & expand
+- [x] `docs/Técnico/Arquitetura por Fases e Opcoes.md` — 3 opções (serverless-first / GCP containers / microsserviços) com fases, **tecnologias nomeadas**, **custos por cenário**, herança do `Arquitetura Plataforma.md`, explicação não-técnica e justificativa de não-grátis
+- [x] `docs/Técnico/Prompt - Validacao de Arquitetura por Fases.md` — prompt p/ GPT + Gemini + Claude
+- [ ] Rodar prompts, consolidar e abrir **ADRs** em `docs/Técnico/` (cloud-base, gateway Pix, tenancy por tier, redirect)

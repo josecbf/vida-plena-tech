@@ -27,22 +27,26 @@ Contexto de produto completo está em `docs/` (após a reorg) — comece por `do
 ## Stack escolhida
 
 - Monorepo: pnpm workspaces + Turborepo
-- App: Next.js 15 (App Router) + TypeScript + Tailwind + shadcn/ui
+- App: Next.js 15 (App Router) + TypeScript + **Tailwind v4** + componentes próprios (estilo shadcn, sem a dependência)
 - Deploy: Vercel (raiz do app = `apps/demo`)
 - Ambiente local confirmado: node v25.8.1, pnpm 10.32.1
+- **Arquitetura de produção (proposta):** Opção 1 serverless-first (Vercel + Supabase + Upstash + Mercado Pago/Pix + BigQuery p/ BI); decisão de cloud ainda em aberto (ver docs de arquitetura)
 
 ---
 
 ## Estado atual
 
-**Fases 0, 1, 2 e 3 ✅ concluídas. A demo builda. Falta só o deploy manual na Vercel (Fase 4).**
+**Demo dos 3 módulos pronta e buildando. Módulo 16 integrado. Análise de módulos + arquitetura de produção documentadas. Pendentes: deploy na Vercel e rodar os prompts de validação nas 3 IAs.**
 
 ### Feito até agora
 - Branch `ze-start` criada; `ze-start.md` (plano + todo) e `CLAUDE-ZE.md` (handoff).
 - **Fase 0:** doc movida para `docs/` (histórico preservado), monorepo (pnpm workspaces + Turborepo). Commit `e84840a`.
 - **Fase 2:** 10 agentes em `agents/` + `.claude/agents/`. Commit `e4fb42b`.
-- **Fase 1:** `packages/ui` (tokens Videira + `cn`), tema Tailwind v4, componentes base (`apps/demo/components/ui.tsx`), página `/brand`. Logo = ícone de uva/videira (lucide `Grape`).
-- **Fase 3:** `apps/demo` (Next.js 15 + Tailwind v4) + `packages/types` (mock Pessoas/Ensino). Telas: `/`, `/pessoas`, `/pessoas/[id]`, `/ensino`, `/ensino/curso/[id]`, `/brand`. **Build OK: 22 páginas, 0 erros de tipo.**
+- **Fase 1:** `packages/ui` (tokens Videira + `cn`), tema Tailwind v4, componentes próprios (`apps/demo/components/ui.tsx`), página `/brand`. Logo = ícone de uva/videira (lucide `Grape`).
+- **Fase 3:** `apps/demo` + `packages/types` (mock Pessoas/Ensino). Telas equipe: `/`, `/pessoas`, `/pessoas/[id]`, `/ensino`, `/ensino/curso/[id]`, `/brand`. Commit `04dc51f`.
+- **Área do aluno:** alternador de perfil Equipe⟷Membro + `/aluno`, `/aluno/curso/[id]`, player `/aluno/aula/[cursoId]/[aulaId]` (progresso em sessão). Commit `742f27b`. **Build OK: 23 páginas, 0 erros.**
+- **Módulo 16 (TAP):** trazido da `main` via merge para `docs/` sem quebrar a estrutura. Commit `177a0ef`.
+- **Análise + arquitetura:** `Analise de Modulos.md`, `Arquitetura por Fases e Opcoes.md` (com tecnologias nomeadas, custos por cenário, herança do doc original, explicação não-técnica e justificativa de não-grátis) e 2 prompts de validação. Commits `be67fe1`, `1770dd6`, `678322f`, `9af3623`.
 
 ### Como rodar a demo
 ```bash
@@ -51,9 +55,11 @@ pnpm --filter @videira/demo dev   # http://localhost:3000
 pnpm --filter @videira/demo build # valida produção
 ```
 
-### Próximo passo (Fase 4 — manual do dono)
-- Importar repo na Vercel → Root Directory = `apps/demo` → deploy. Instruções em `apps/demo/README.md`.
-- Opcional: favicon próprio, polish de responsividade, e evoluir mock → backend real (Supabase) trocando as fontes em `packages/types`.
+### Próximos passos (em aberto)
+- **Deploy da demo na Vercel** (manual do dono): Root Directory = `apps/demo`. Instruções em `apps/demo/README.md`.
+- **Rodar os 2 prompts de validação** (identidade plugável + arquitetura por fases) no GPT, Gemini e Claude; comparar e registrar divergências como **ADR** em `docs/Técnico/`.
+- **Decidir cloud-base:** Opção 1 serverless (Vercel+Supabase) vs Opção 2 GCP-nativo (Cloud Run + BigQuery). Usuário sinalizou interesse no BigQuery.
+- Opcional: favicon próprio; evoluir mock → backend real (Supabase) trocando as fontes em `packages/types`.
 
 ### Pastas/arquivos-chave
 - `package.json`, `pnpm-workspace.yaml`, `turbo.json` — config monorepo
@@ -62,11 +68,12 @@ pnpm --filter @videira/demo build # valida produção
 - `agents/` + `.claude/agents/` — agentes de IA
 - `ze-start.md`, `CLAUDE-ZE.md` — controle
 
-## Documentos de análise e arquitetura (11/06)
+## Documentos de análise e arquitetura
 
 - `docs/Produto/Analise de Modulos.md` — quais módulos vendem sozinhos (Tier A), via provider externo/Lite (Tier B) ou sempre dependem da Pessoas canônica (Tier C); leitura land & expand.
-- `docs/Técnico/Arquitetura por Fases e Opcoes.md` — proposta de infra de baixo custo e escalável, em fases (0–3), começando por Pessoas/Ensino/TAP. Opção 1 (recomendada): monólito modular **serverless-first** (Next.js/Vercel + Postgres RLS + redirect do TAP na borda + outbox). Opção 2: containers. Opção 3: microsserviços (não recomendada agora). Âncora: igreja de 24k pessoas/4k membros/8 pastores.
-- `docs/Técnico/Prompt - Validacao de Arquitetura por Fases.md` — prompt autocontido para validar nas 3 IAs (GPT, Gemini, Claude).
+- `docs/Técnico/Arquitetura por Fases e Opcoes.md` — proposta de infra de baixo custo e escalável, em fases (0–3), começando por Pessoas/Ensino/TAP. **Opção 1 (recomendada):** serverless-first (Vercel + Supabase + Upstash + Mercado Pago + BigQuery), redirect do TAP na borda. **Opção 2:** GCP-nativo em containers (Cloud Run + Cloud SQL + Memorystore + Pub/Sub + BigQuery). **Opção 3:** microsserviços (não recomendada). Inclui **tecnologias nomeadas + estimativas de custo por cenário**, **herança/evolução do `Arquitetura Plataforma.md`** (original, abstrato e pré-TAP), **explicação não-técnica** (analogias) e **por que a Fase 0 não deve ser gratuita**. Âncora: igreja 24k pessoas/4k membros/8 pastores.
+- `docs/Técnico/Modularidade e Identidade Plugavel.md` — contrato `PeopleProvider`/`PersonRef` (Native/External/Lite) para módulos standalone.
+- **Prompts de validação:** `docs/Técnico/Prompt - Validacao de Arquitetura por Fases.md` (infra, p/ GPT+Gemini+Claude) e `docs/Técnico/Prompt - Validacao de Arquitetura (Gemini e GPT).md` (identidade plugável). Pendente: rodar e virar ADRs.
 
 ## Frente de arquitetura (em discussão)
 
@@ -104,3 +111,4 @@ git pull --ff-only   # se houver remoto
 
 - **2026-06-09:** Sessão inicial. Decisões (monorepo/Videira/demo mock). Criados `ze-start.md` e `CLAUDE-ZE.md`. **Fases 0, 1, 2, 3 concluídas:** reorg+monorepo (`e84840a`), 10 agentes de IA (`e4fb42b`), design system + demo Pessoas/Ensino com build validado. Falta deploy manual na Vercel.
 - **2026-06-10:** Área do aluno (`742f27b`), README com instruções de rodar local (`ee9fa19`), branch `ze-start` publicada no GitHub (`origin`). Iniciada **frente de arquitetura** (identidade plugável para Ensino standalone/embarcável) + prompt de validação Gemini/GPT. **Pendente:** receber doc do módulo 16.
+- **2026-06-11:** Merge da `main` na `ze-start` trazendo o **módulo 16 (TAP)** e revisões, com realocação automática para `docs/` (`177a0ef`). Módulo 16 lido e analisado (`b7b660b`). Criados **`Analise de Modulos.md`** (Tier A/B/C) e **`Arquitetura por Fases e Opcoes.md`** + prompt 3-IAs (`1770dd6`); arquitetura enriquecida com **tecnologias nomeadas e custos** (`678322f`) e com **herança do doc original, explicação não-técnica e justificativa de não-grátis** (`9af3623`). Confirmado que `Arquitetura Plataforma.md` é original do repo (não autoral). **Pendente:** deploy Vercel, rodar prompts → ADRs, decidir cloud-base.
