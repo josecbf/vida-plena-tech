@@ -21,6 +21,24 @@ Proposta de arquitetura de baixo custo inicial e escalável para produção, par
 
 > Nota de dimensionamento: 24k registros de pessoa é **dado pequeno** para Postgres. O desafio real não é volume de dados — é o **pico de concorrência do TAP no domingo** (centenas/milhares de toques no mesmo minuto da oferta) e a **latência do redirect (<200ms p95)**. A arquitetura é guiada por isso.
 
+## Em linguagem não-técnica (leia esta seção primeiro)
+
+Pense na plataforma como a infraestrutura de um **prédio que atende várias igrejas ao mesmo tempo**.
+
+- **Por que um prédio só (multi-tenant):** em vez de construir um prédio para cada igreja, construímos **um só, e cada igreja tem seu apartamento**. Uma portaria rigorosa garante que ninguém entra no apartamento do vizinho. Muito mais barato e ainda seguro. Vale para todas as opções.
+
+- **Opção 1 — Serverless ("paga só o que usar"):** é como **água e luz**. A torneira abre sozinha quando alguém precisa e fecha quando ninguém usa — você paga só pelo consumo. Como o uso da igreja explode no domingo e some na quarta de madrugada, isso é ideal: cresce sozinho no pico e custa quase nada no resto. Começa baratíssimo. *Contra:* depois de um tempo parado, o primeiro acesso pode ter uma pequena “demora pra abrir a torneira”.
+
+- **Opção 2 — Containers ("sala sempre pronta"):** é como **alugar uma sala comercial fixa**. Você paga o aluguel todo mês, mesmo de madrugada, mas a sala está sempre acesa e pronta — sem nenhuma demora. Mais previsível, e boa se quisermos tudo no Google (com o BigQuery junto). *Contra:* o custo mínimo é um pouco maior, porque paga mesmo sem ninguém usando.
+
+- **Opção 3 — Microsserviços ("15 lojas separadas"):** é como abrir **uma loja independente para cada módulo**, cada uma com gerente, estoque e contabilidade próprios. Faz sentido para uma rede gigante; para quem começa, é caro e complicado demais. Não recomendo agora.
+
+- **O “toque” do TAP no domingo:** as moedinhas de toque precisam abrir a tela **num piscar de olhos, com todo mundo tocando ao mesmo tempo**. Em vez de mandar cada toque para um servidor central (longe e congestionado), espalhamos “pontos de atendimento” pelo mundo, **bem pertinho do celular**. Por isso essa parte fica “na borda” em qualquer opção.
+
+- **O armazém de dados (BigQuery):** tudo que acontece (ofertas, presenças, inscrições) é copiado para um **grande armazém à parte**, onde fazemos relatórios e IA **sem atrapalhar** o sistema que está rodando o culto.
+
+> Se você não é técnico: leia a seção **"Por que a Fase 0 não deve ser gratuita"** e a **Recomendação**. O miolo técnico entre elas é para o time de engenharia.
+
 ## Princípios
 
 1. **Monólito modular primeiro**, com fronteiras de módulo nítidas (já é a decisão do repo).
@@ -29,6 +47,29 @@ Proposta de arquitetura de baixo custo inicial e escalável para produção, par
 4. **Multi-tenant por `tenant_id` + RLS** começando em banco/schema compartilhado; isolamento dedicado só para enterprise.
 5. **Contratos plugáveis** (`PeopleProvider`) para permitir módulos standalone depois.
 6. **Strangler-ready:** qualquer módulo pode ser extraído como serviço quando (e só quando) a carga justificar.
+
+## Herança e evolução do `Arquitetura Plataforma.md`
+
+O documento [[Arquitetura Plataforma]] é a **base conceitual** e seus princípios continuam válidos — esta proposta os respeita e constrói sobre eles. O que nele está **defasado** não é o raciocínio, e sim o fato de ser **abstrato e anterior ao módulo 16 (TAP)**: ele não nomeia tecnologia, não trata de custo, deploy, latência de borda, identidade plugável nem sequência de construção. Este documento é a **evolução executável** dele.
+
+**O que mantemos dele (continua válido e obrigatório):**
+- Monólito modular com **contratos internos** — um módulo não acessa a tabela de outro.
+- **Padrão transacional:** validar permissão → gravar em transação → auditoria quando sensível → publicar evento via **outbox na mesma transação** → consumidor com **inbox idempotente**.
+- **Multi-tenant rígido:** `tenant_id NOT NULL`, FKs que impedem cruzar tenant, tenant resolvido por **credencial confiável** (nunca pelo payload externo).
+- **Observabilidade mínima** desde o MVP (p95/p99, erro por módulo, eventos pendentes, leituras sensíveis).
+- **Eventos de domínio**, **regra de ouro** e **gate de arquitetura por módulo**.
+
+**O que evolui — e por quê:**
+| Tema | Antes (Arquitetura Plataforma.md) | Agora (este doc) | Por quê |
+|---|---|---|---|
+| Tecnologia | Agnóstico, sem nomes | Stack nomeada (Vercel/Supabase ou GCP, BigQuery…) | Para executar e estimar custo de verdade |
+| Custo | "menos custo" como ideia | Estimativas por fase e opção | Decidir com número, não com intuição |
+| Deploy | Não definido | Serverless-first / containers / em fases | Tirar do papel |
+| TAP / latência | Não existia (pré-módulo 16) | Redirect na borda + cache (<200ms) | TAP é o novo gargalo crítico do domingo |
+| Vender separado | "pode, mas não reinventa pessoa" | Contrato **PeopleProvider** (Native/External/Lite) | Dizer **como** um módulo sozinho obtém pessoas |
+| Tenancy | `tenant_id` + RLS iguais p/ todos | **Tiers** (compartilhado → dedicado p/ enterprise) | Atender de igreja pequena a rede |
+| BI / IA | "AI Layer" abstrata | **BigQuery** como armazém dos eventos | Relatório e IA sem pesar no sistema do culto |
+| Ordem | Sem fases | Fases 0–3 (01/02/16 primeiro) | Construir sem reescrever depois |
 
 ---
 
@@ -191,6 +232,20 @@ Separar Pessoas, Ensino, TAP, Financeiro como **serviços independentes** com **
 - **HA (alta disponibilidade) de banco ~dobra** o custo do Postgres; opcional na Fase 0, recomendado na Fase 1.
 - 24k pessoas = **dado pequeno**; o custo cresce por **concorrência do TAP e tráfego**, não por volume de cadastro.
 - Não inclui custos de equipe, suporte, domínio, e-mail transacional (ex.: Resend/SendGrid ~$0–20) nem ferramentas de produto.
+
+## Por que a Fase 0 não deve ser gratuita
+
+Existe a tentação de usar só os planos gratuitos (Supabase Free, Vercel Hobby) e gastar US$0. **Não recomendo** — os ~US$60–120/mês da Fase 0 são, na prática, **um seguro barato**. Em linguagem simples:
+
+1. **É uso comercial — o plano grátis proíbe.** Os termos dos planos "hobby/free" vedam uso comercial. Você vai **cobrar das igrejas**; usar o grátis viola os termos e a conta pode ser **suspensa sem aviso** — inclusive no meio de um culto.
+2. **São dados sensíveis e reais (LGPD).** Você vai guardar dados de **crianças, de membros e de ofertas**. Plano grátis não garante backup, retenção nem suporte. Perder ou vazar isso é risco **jurídico e de reputação**.
+3. **O grátis quebra exatamente no domingo.** Bancos gratuitos **pausam por inatividade** e limitam conexões. É justo quando **4 mil membros tocam o TAP ao mesmo tempo** que ele cai. O plano pago dá a estabilidade e o cache que o pico exige.
+4. **Backup e recuperação.** ~US$25–45/mês compram backup automático e "voltar o banco para minutos atrás". No grátis, se perder os dados de oferta/membros, **não há volta**.
+5. **Credibilidade comercial.** Você vai vender para uma igreja de **24 mil pessoas**. "Rodamos num plano gratuito" não passa confiança — e a estratégia já trata profissionalismo e implantação como **parte do produto**.
+6. **O custo é irrisório perto do risco e da receita.** ~US$60–120/mês (~R$350–700) é **menos que uma única mensalidade** de uma igreja cliente. Economizar isso para arriscar dados de criança e de oferta é economia que sai caro.
+7. **Começar certo evita migração de emergência.** Subir já com backup, RLS e observabilidade evita o retrabalho caro de migrar às pressas quando o grátis não aguentar.
+
+**Resumo:** o gratuito serve para um protótipo de brincadeira; é **impróprio para guardar dinheiro de oferta e dados de criança** de uma igreja real. A Fase 0 paga é o piso do profissionalismo — e custa menos que um plano de celular.
 
 ## Recomendação
 
