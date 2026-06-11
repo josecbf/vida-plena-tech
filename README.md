@@ -78,6 +78,17 @@ Na demo, use o alternador **Equipe ⟷ Membro** no topo: a visão Equipe traz Pe
 13. Equipamentos Técnicos
 14. Comunicação
 15. Portal e App da Igreja
+16. TAP e Engajamento Digital
+
+## Gate antes de codar
+
+Nenhum módulo deve iniciar implementação apenas por ter visão e backlog. Antes da primeira migration/tela, o módulo precisa ter:
+
+- contrato explícito com Pessoas, permissões, auditoria e eventos de domínio;
+- matriz LGPD por entidade e fluxo;
+- critérios de aceite testáveis;
+- regras de exceção e operação sob pressão;
+- status no índice de qualidade como `Pronto para Fase 0` ou superior.
 
 ## Como usar este repositório
 

@@ -27,25 +27,37 @@ Cada modulo deve ser avaliado pela mesma regua. A nota nao mede quantidade de ar
 | MVP | A v1 esta enxuta e vendavel? |
 | Stress | O modulo funciona sob pressao operacional? |
 
+## Estados de prontidao
+
+| Estado | Significado |
+|---|---|
+| Inicial | Visao existe, mas ainda nao e codavel |
+| Em especificacao | Ha PRD/modelo, mas faltam contratos ou excecoes |
+| Pronto para Fase 0 | Contratos, dados, permissoes e LGPD definidos |
+| Pronto para Alpha | Fluxo principal, excecoes e testes essenciais definidos |
+| Pronto para MVP | Piloto, observabilidade, suporte e criterio comercial definidos |
+| Aprovado para GA | Pronto para venda ampla |
+
 ## Avaliacao pos-auditoria
 
 | Modulo | Estado | Risco principal | Proxima melhoria |
 |---|---|---|---|
-| Pessoas | Forte | Deduplicacao e dados sensiveis | Separar timeline operacional e confidencial |
-| Ensino | Bom | Virar LMS generico | Reforcar trilhas e proximo passo pastoral |
-| Apoio Pastoral SOM | Bom | Expor dados confidenciais | Classificacao e auditoria de leitura |
-| Gestao de Cultos | Medio | Domingo sob pressao | Modo culto e escalas rapidas |
-| Grupos de Crescimento | Medio | Frequencia virar burocracia | Fluxo simples para lider leigo |
-| Eventos | Medio | Escopo crescer demais | Focar inscricao, check-in e pagamentos simples |
-| Criancas | Critico | Checkout inseguro | Regras de excecao e autorizacao |
-| Ministerios e Voluntarios | Medio | Escalas complexas demais | Confirmacao, substituicao e requisito por funcao |
-| Espacos e Recursos | Medio | Conflito de reservas | Aprovacao e calendario unificado |
-| Estoque WMS | Inicial | Complexidade de WMS antes da hora | Limitar a estoque operacional da igreja |
-| Compras | Inicial | Aprovacao fraca | Fluxo por centro de custo |
-| Financeiro | Critico | Exposicao e conflito de interesse | Segregacao, auditoria e relatorios por perfil |
+| Pessoas | Pronto para Fase 0 | Deduplicacao e dados sensiveis | Fechar merge auditado, consentimento e timeline por sensibilidade |
+| Ensino | Em especificacao | Virar LMS generico | Amarrar trilhas a jornada pastoral e Pessoas |
+| Apoio Pastoral SOM | Pronto para Fase 0 | Expor dados confidenciais | Formalizar leitura sensivel e explicabilidade |
+| Gestao de Cultos | Em especificacao | Domingo sob pressao | Modo culto, baixa conectividade e escala rapida |
+| Grupos de Crescimento | Em especificacao | Frequencia virar burocracia | Fluxo semanal simples para lider leigo |
+| Eventos | Em especificacao | Escopo crescer demais | Inscricao, check-in, pagamento simples e capacidade |
+| Criancas | Em especificacao | Checkout inseguro | Autorizacao, excecao, incidente e auditoria forte |
+| Ministerios e Voluntarios | Em especificacao | Escalas complexas demais | Confirmacao, substituicao e requisito por funcao |
+| Espacos e Recursos | Em especificacao | Conflito de reservas | Calendario unificado, aprovacao e regra de conflito |
+| Estoque WMS | Inicial | Complexidade de WMS antes da hora | Reduzir para estoque operacional e inventario simples |
+| Compras | Inicial | Aprovacao fraca | Alcada, centro de custo, recebimento e segregacao |
+| Financeiro | Em especificacao | Exposicao e conflito de interesse | Segregacao, eventos idempotentes e relatorios por perfil |
 | Equipamentos Tecnicos | Inicial | Virar inventario sem manutencao | Reserva, responsavel e ciclo de vida |
-| Comunicacao | Medio | Spam e consentimento fraco | Preferencias, segmentos e historico |
-| Portal e App | Medio | Virar app grande demais | PWA focado em autosservico essencial |
+| Comunicacao | Em especificacao | Spam e consentimento fraco | Preferencias, segmentos, fadiga e historico |
+| Portal e App | Em especificacao | Virar app grande demais | PWA focado em autosservico essencial |
+| TAP e Engajamento Digital | Em revalidacao | Contratos com Financeiro e Pessoas | Validar contratos intermodulares antes de codar |
 
 ## Ordem recomendada de aprofundamento
 
@@ -64,4 +76,14 @@ Cada modulo deve ser avaliado pela mesma regua. A nota nao mede quantidade de ar
 13. Espacos e Recursos.
 14. Equipamentos Tecnicos.
 15. Estoque WMS.
+16. TAP e Engajamento Digital.
 
+## Gate atual recomendado
+
+O projeto inteiro deve concentrar a proxima rodada em:
+
+1. Pessoas: fechar contrato de deduplicacao, merge e consentimentos.
+2. Financeiro: aceitar eventos financeiros idempotentes de Eventos, TAP e Compras.
+3. Comunicacao: aceitar consentimento, preferencia de canal e historico de envio.
+4. Criancas: fechar checkout, excecao e leitura de dados de menor.
+5. Core: consolidar `TenantMembership`, `RoleAssignment`, `UserScope`, `DomainEvent`, `AuditLog` e `ConsentRecord`.

@@ -92,6 +92,8 @@ Controles:
 Exemplos:
 
 - doacoes individuais;
+- doacoes identificadas originadas no TAP;
+- Gift Entry e lotes de contribuicoes fisicas;
 - despesas;
 - contas;
 - dados bancarios;
@@ -115,6 +117,7 @@ Exemplos:
 - chaves de webhook;
 - credenciais de integracao;
 - segredos de pagamento;
+- credenciais de gateway configuradas no TAP;
 - connection strings.
 
 Controles:
@@ -129,3 +132,16 @@ Controles:
 
 Quando houver duvida, classificar no nivel mais restritivo ate validacao formal.
 
+## Classificacao especifica do TAP
+
+| Dado TAP | Nivel | Observacao |
+|---|---:|---|
+| TapEvent sem identificacao pessoal | 1/2 | Operacional; IP/user-agent devem ser hasheados quando coletados |
+| Destino ativo, grupo TAP e dispositivo | 1 | Sem dado pessoal por padrao |
+| Formulario de visitante | 2 | Contato operacional; nao cria Pessoa no escopo atual |
+| Pedido de oracao | 3 | Pastoral confidencial, leitura auditada |
+| Decisao por Jesus / batismo | 3 | Pastoral confidencial, leitura auditada |
+| Inscricao em celula | 2 | Encaminhamento operacional; pode subir para nivel 3 se houver texto sensivel |
+| Doacao identificada | 5 | Financeiro sensivel, acesso segregado |
+| Gift Entry | 5 | Financeiro sensivel, auditoria forte |
+| Credenciais de gateway | 6 | Segredo tecnico, nunca em texto puro |

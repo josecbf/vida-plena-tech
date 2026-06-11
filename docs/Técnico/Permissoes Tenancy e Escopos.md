@@ -122,6 +122,32 @@ Exemplos:
 
 Permissao nunca pode existir apenas na interface. Toda rota, action, query e API precisa validar tenant, modulo ativo, papel, permissao e escopo.
 
+## Gate de permissao por modulo
+
+Antes de implementar qualquer modulo, documentar:
+
+- papeis operacionais reais;
+- permissoes por recurso e acao;
+- escopos aplicaveis;
+- dados sensiveis visiveis por papel;
+- acoes que exigem justificativa;
+- acoes que exigem dupla aprovacao;
+- exportacoes permitidas;
+- leitura sensivel auditada;
+- comportamento de acesso negado.
+
+## Segregacao de funcao
+
+Fluxos financeiros, infantis e administrativos criticos devem impedir concentracao indevida de poder.
+
+Exemplos:
+
+- quem solicita despesa nao deve aprovar e pagar sozinho;
+- quem cadastra responsavel de crianca nao deve autorizar excecao sem trilha;
+- quem cria campanha de comunicacao pode precisar de aprovacao para envio amplo;
+- quem administra modulo nao recebe automaticamente leitura sensivel;
+- break-glass exige justificativa, expiracao e revisao posterior.
+
 ## Usuario global e membresia no tenant
 
 O usuario de login deve ser tratado como identidade global, separado da participacao em uma igreja.

@@ -104,6 +104,18 @@ Variaveis de precificacao:
 - volume de API/webhooks;
 - suporte e onboarding.
 
+### Regra para módulos de culto ao vivo
+
+Módulos que operam fluxos públicos durante culto, como TAP e Engajamento Digital, não podem derrubar experiências já publicadas por limite comercial no meio do uso.
+
+Regras:
+
+- limite de plano bloqueia primeiro criação e edição administrativa acima do limite;
+- fluxos públicos já publicados continuam funcionando durante janela de graça;
+- transações pendentes, webhooks, recibos e lotes em andamento não são interrompidos por limite comercial;
+- alertas administrativos devem aparecer antes do bloqueio efetivo;
+- downgrade ou trial expirado não deve trocar uma URL pública para tela de cobrança durante culto.
+
 ## Pacotes sugeridos
 
 ### Pacote Cuidado

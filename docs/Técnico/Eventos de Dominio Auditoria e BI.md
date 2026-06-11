@@ -24,16 +24,59 @@ Exemplo:
 
 Campos conceituais:
 
-- tenantId;
-- eventType;
-- aggregateType;
-- aggregateId;
-- actorUserId;
-- personId;
-- occurredAt;
-- payload;
-- correlationId;
-- idempotencyKey;
+- `event_id`;
+- `tenant_id`;
+- `schema_version`;
+- `event_type`;
+- `aggregate_type`;
+- `aggregate_id`;
+- `producer_module`;
+- `actor_user_id`;
+- `person_id`;
+- `occurred_at`;
+- `payload`;
+- `correlation_id`;
+- `causation_id`;
+- `idempotency_key`;
+- `sensitivity`;
+- `allowed_consumers`.
+
+## Outbox e Inbox
+
+Eventos devem usar o padrao outbox/inbox.
+
+### Outbox
+
+O modulo produtor grava o evento na mesma transacao da alteracao principal.
+
+Campos minimos:
+
+- `event_id`;
+- `tenant_id`;
+- `event_type`;
+- `schema_version`;
+- `payload`;
+- `sensitivity`;
+- `status: pending | published | failed`;
+- `attempts`;
+- `next_retry_at`;
+- `created_at`;
+- `published_at`.
+
+### Inbox
+
+Cada consumidor registra eventos processados para garantir idempotencia.
+
+Campos minimos:
+
+- `consumer_module`;
+- `event_id`;
+- `tenant_id`;
+- `processing_status`;
+- `processed_at`;
+- `error_message`.
+
+Regra: consumidor deve ser seguro para reprocessamento. Evento duplicado nunca pode duplicar efeito financeiro, pastoral, comunicacional ou operacional.
 
 ## Politica de payload minimo
 
@@ -49,12 +92,18 @@ Regras:
 - definir consumidores permitidos;
 - aplicar mascaramento ou redaction em campos sensiveis;
 - manter idempotencia sem expor dado pessoal.
+- nunca assumir que todo consumidor pode ver todo payload.
+- usar payloads segmentados ou referencias quando houver dados de nivel 3, 4, 5 ou 6.
 
 ## Eventos essenciais
 
 - `person.created`
 - `person.updated`
 - `person.merged`
+- `person.consent.granted`
+- `person.consent.revoked`
+- `person.data_export_requested`
+- `person.merge_review_required`
 - `group.attendance_recorded`
 - `course.completed`
 - `certificate.issued`
@@ -71,7 +120,37 @@ Regras:
 - `stock.item_below_minimum`
 - `asset.maintenance_scheduled`
 - `payment.approved`
+- `payment.received`
+- `donation.received`
+- `donation.refunded`
 - `space.booking_approved`
+- `communication.sent`
+- `communication.consent_missing`
+- `tap.donation.confirmed`
+- `tap.donation.failed`
+- `tap.donation.refunded`
+- `tap.gift_entry.created`
+- `tap.gift_batch.closed`
+
+### Contrato financeiro do TAP
+
+Eventos financeiros do TAP seguem o mesmo padrao outbox/inbox dos demais modulos. TAP atua como produtor; Financeiro atua como consumidor autorizado e fonte oficial para conciliacao, relatorios contabeis e prestacao de contas.
+
+| Evento | Produtor | Consumidor autorizado | Payload minimo | Idempotencia |
+|---|---|---|---|---|
+| `tap.donation.confirmed` | TAP | Financeiro | `donation_id`, `fund_id`, `amount`, `currency`, `method`, `gateway_provider`, `gateway_transaction_id`, `gateway_charge_id`, `confirmed_at`, `campus_id` | `tenant_id + gateway_provider + gateway_transaction_id` |
+| `tap.donation.failed` | TAP | Financeiro | `donation_id`, `fund_id`, `amount`, `method`, `gateway_provider`, `gateway_charge_id`, `failure_reason`, `failed_at` | `tenant_id + donation_id + failed` |
+| `tap.donation.refunded` | TAP | Financeiro | `donation_id`, `refund_id`, `amount`, `gateway_provider`, `gateway_transaction_id`, `refunded_at`, `reason` | `tenant_id + gateway_provider + refund_id` |
+| `tap.gift_entry.created` | TAP | Financeiro | `gift_entry_id`, `gift_batch_id`, `fund_id`, `amount`, `method`, `donated_at`, `recorded_by`, `campus_id` | `tenant_id + gift_entry_id` |
+| `tap.gift_batch.closed` | TAP | Financeiro | `gift_batch_id`, `campus_id`, `closed_by`, `closed_at`, `entry_count`, `total_amount_by_fund`, `total_amount_by_method` | `tenant_id + gift_batch_id + closed_at` |
+
+Regras:
+
+- TAP nao e ledger contabil oficial; mantem staging operacional.
+- Financeiro registra consumo em inbox antes de gerar efeito contabil.
+- Reprocessamento do mesmo evento nunca duplica receita, lancamento, relatorio ou conciliacao.
+- Payload financeiro nao carrega CPF completo, dados de cartao ou credenciais de gateway.
+- Dados financeiros individualizados sao no minimo nivel sensivel e exigem consumidor explicitamente autorizado.
 
 ## AuditLog
 
@@ -79,18 +158,23 @@ Auditoria registra acoes sensiveis, nao apenas eventos de negocio.
 
 Campos conceituais:
 
-- tenantId;
-- actorUserId;
-- module;
-- action;
-- resourceType;
-- resourceId;
-- before;
-- after;
-- reason;
-- ip;
-- sessionId;
-- occurredAt.
+- `audit_id`;
+- `tenant_id`;
+- `actor_user_id`;
+- `actor_membership_id`;
+- `module`;
+- `action`;
+- `resource_type`;
+- `resource_id`;
+- `sensitivity`;
+- `before`;
+- `after`;
+- `reason`;
+- `permission_used`;
+- `scope_used`;
+- `ip_hash`;
+- `session_id`;
+- `occurred_at`.
 
 `before` e `after` devem ser mascarados por politica. Auditoria precisa provar o que aconteceu, mas nao deve criar um segundo banco irrestrito de dados sensiveis.
 
@@ -108,6 +192,9 @@ Para dados sensiveis, armazenar preferencialmente:
 
 - ajuste manual de jornada;
 - alteracao financeira;
+- leitura de doacao individualizada;
+- leitura de nota pastoral confidencial;
+- leitura de dado de menor;
 - exclusao ou cancelamento;
 - merge de pessoa;
 - troca de responsavel de crianca;
@@ -117,6 +204,9 @@ Para dados sensiveis, armazenar preferencialmente:
 - aprovacao de compra;
 - alteracao de permissao;
 - exportacao de dados.
+- uso de break-glass.
+- envio de comunicacao em massa.
+- alteracao de integracao, token ou webhook.
 
 ## BI
 

@@ -16,7 +16,7 @@ Registrar as rodadas de melhoria aplicadas ao planejamento da Plataforma-Igrejas
 
 ### Achado
 
-Todos os 15 modulos tinham a estrutura basica criada, mas a qualidade percebida variava entre documentos mais maduros e documentos ainda muito parecidos entre si.
+Todos os 15 modulos iniciais tinham a estrutura basica criada, mas a qualidade percebida variava entre documentos mais maduros e documentos ainda muito parecidos entre si.
 
 ### Correcao aplicada
 
@@ -100,3 +100,20 @@ Toda melhoria futura deve passar por tres perguntas:
 2. Isso protege pessoas e dados sensiveis?
 3. Isso ajuda a vender e sustentar o produto sem criar complexidade prematura?
 
+## Rodada 6 - Stress test hard global
+
+### Achado
+
+O projeto evoluiu para 16 modulos, mas a fundacao ainda podia permitir inicio de codigo antes de fechar contratos globais. O risco principal era cada modulo tomar decisoes locais sobre Pessoas, permissoes, eventos, LGPD, arquivos, comunicacao e financeiro.
+
+### Correcao aplicada
+
+- Reescrito o stress test global com criterio hard de prontidao.
+- Adicionada Fase -1 de contratos antes de codigo.
+- Reforcados PRD Global, Arquitetura, Modelo Canonico, Eventos, Permissoes, LGPD e Checklist.
+- Transformado o indice de qualidade em estados de prontidao acionaveis.
+- Incluido TAP e Engajamento Digital no README e no indice global.
+
+### Resultado esperado
+
+O projeto deixa de depender de "bom senso na hora de codar" e passa a ter gates objetivos. A proxima implementacao deve comecar por contratos globais, nao por telas isoladas de modulo.
