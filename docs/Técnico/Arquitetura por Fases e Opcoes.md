@@ -233,6 +233,8 @@ Separar Pessoas, Ensino, TAP, Financeiro como **serviços independentes** com **
 - 24k pessoas = **dado pequeno**; o custo cresce por **concorrência do TAP e tráfego**, não por volume de cadastro.
 - Não inclui custos de equipe, suporte, domínio, e-mail transacional (ex.: Resend/SendGrid ~$0–20) nem ferramentas de produto.
 
+> **Validação externa (GPT + Claude):** a **igreja âncora de 24k não é carga de Fase 0** — ao ligá-la com backup/PITR, e-mail, observabilidade e compute do Supabase dimensionado, a Fase 1 fica mais perto de **US$250–700/mês**, não US$150–400. Também não constava a **taxa de Pix (~0,49% Mercado Pago)**, relevante para doação. Síntese e decisões: [[Validacao de Arquitetura - Consolidacao]] e [`ADRs/`](ADRs/).
+
 ## Por que a Fase 0 não deve ser gratuita
 
 Existe a tentação de usar só os planos gratuitos (Supabase Free, Vercel Hobby) e gastar US$0. **Não recomendo** — os ~US$60–120/mês da Fase 0 são, na prática, **um seguro barato**. Em linguagem simples:

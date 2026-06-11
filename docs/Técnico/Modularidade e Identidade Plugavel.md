@@ -114,6 +114,10 @@ Um **feature flag / config por tenant** escolhe qual provider o Ensino daquele t
 - **Suporte operacional**: quem resolve problema de identidade no modo standalone?
 - **Risco de o Lite "vazar escopo"** e virar um Pessoas pobre.
 
+## ⚠️ Revisão pós-validação (Gemini)
+
+A validação externa contestou o provider **Lite** (tende a inchar e, na prática, reimplementa gestão de pessoas — quebra a regra de ouro) e o **cache da `PersonRef` federada** (consistência distribuída + risco de LGPD). Proposta de revisão em [[ADRs/0005-identidade-plugavel-revisao|ADR-0005]]: **descontinuar o Lite** em favor de *Native sempre embarcado + gating comercial*, e implementar o **External** como *SSO/OIDC + JIT mínimo / Zero-State* (sem materializar `PersonRef`). Confirmar com GPT/Claude antes de fechar.
+
 ## Próximas decisões
 
 - [ ] Aprovar (ou ajustar) o contrato `PersonRef`/`PeopleProvider`.

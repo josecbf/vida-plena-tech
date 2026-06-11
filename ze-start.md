@@ -130,4 +130,6 @@ Módulo 16 = **TAP e Engajamento Digital** (NFC + ofertas/Pix + formulários pas
 - [x] `docs/Produto/Analise de Modulos.md` — vendável sozinho × dependência de Pessoas (Tier A/B/C) + land & expand
 - [x] `docs/Técnico/Arquitetura por Fases e Opcoes.md` — 3 opções (serverless-first / GCP containers / microsserviços) com fases, **tecnologias nomeadas**, **custos por cenário**, herança do `Arquitetura Plataforma.md`, explicação não-técnica e justificativa de não-grátis
 - [x] `docs/Técnico/Prompt - Validacao de Arquitetura por Fases.md` — prompt p/ GPT + Gemini + Claude
-- [ ] Rodar prompts, consolidar e abrir **ADRs** em `docs/Técnico/` (cloud-base, gateway Pix, tenancy por tier, redirect)
+- [x] Rodar validação (GPT+Claude infra, Gemini identidade), consolidar (`Validacao de Arquitetura - Consolidacao.md`) e abrir **6 ADRs** em `docs/Técnico/ADRs/`
+- [ ] Fechar ADRs `Proposto`: 0002 (fonte da verdade do TAP), 0005 (descontinuar Lite?), 0006 (região/LGPD); + sub-decisões (worker persistente, service-role×JWT, PSP do Pix)
+- [ ] Cobertura 3×2: rodar infra no Gemini e identidade no GPT/Claude
