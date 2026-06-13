@@ -144,13 +144,35 @@ tags:
 
 ## ADR-09 — Destination config versionado
 
-**Contexto:** `Destination.config` varia por tipo e tende a evoluir.
+**Contexto:** `Destination.config` é um campo JSONB que varia por tipo e tende a evoluir. Sem schemas versionados, alterações futuras podem quebrar destinos já publicados silenciosamente e impedir migrações seguras.
 
-**Decisão:** Cada destino armazena `config_version` e valida `config` por schema do tipo.
+**Decisão:** Cada destino armazena `config_version` (integer) e valida `config` contra o schema do tipo + versão antes de persistir. Schemas v1 de todos os tipos estão documentados em `Modelo Conceitual de Entidades TAP e Engajamento Digital.md`.
 
-**Motivação:** Evitar quebra silenciosa quando uma tela ou campo muda.
+**Motivação:** `config_version` permite detectar destinos em formato antigo e aplicar migração controlada. A validação na camada de persistência garante que nenhum destino inválido chegue ao redirect engine ou ao formulário.
 
-**Consequência:** Mudanças de schema exigem migração ou compatibilidade retroativa.
+**Consequência:** Toda mudança de schema exige as ações descritas abaixo.
+
+### Regras de migração de Destination.config
+
+**Classificação de mudança:**
+
+| Tipo de mudança | Nova versão? | Migration obrigatória? |
+|---|---|---|
+| Novo campo opcional com `default` definido | Não | Não |
+| Novo campo obrigatório | Sim | Sim |
+| Remoção de campo | Sim | Sim |
+| Mudança de tipo de campo | Sim | Sim |
+| Renomeação de campo | Sim | Sim |
+
+**Protocolo:**
+
+1. Documentar nova versão no `Modelo Conceitual de Entidades` com número explícito (v2, v3...).
+2. Incluir migration script no **mesmo PR** do novo schema — nunca em PR separado.
+3. Destinos em `draft` migram imediatamente via script.
+4. Destinos em `active` migram via script retrocompatível, ou em janela de manutenção com rollback documentado.
+5. O redirect engine e os formulários devem aceitar `config_version` anterior e novo durante a transição.
+6. `config_version` nunca é decrementado; rollback de schema usa migration reversa.
+7. Após todos os registros migrados e confirmados em produção, a versão anterior pode ser descontinuada.
 
 ---
 
@@ -187,6 +209,198 @@ tags:
 **Motivação:** Garante que eventos financeiros possam ser reprocessados sem duplicar receita, lançamento, relatório ou conciliação.
 
 **Consequência:** Toda confirmação financeira precisa gravar a alteração operacional e o evento na mesma transação. Se publicação falhar, o evento permanece pendente para retry. Financeiro deve tratar reenvio conhecido como sucesso idempotente.
+
+---
+
+## Contrato Financeiro TAP → Financeiro
+
+**Status de aceite:** Pendente de aceite formal pelo módulo Financeiro
+**Gate para MVP comercial:** Este contrato deve ser aceito antes de Pix e Gift Entry saírem do piloto para produção comercial
+
+---
+
+### Fronteira de responsabilidade
+
+TAP e Financeiro têm responsabilidades distintas e não se sobrepõem:
+
+| Domínio | TAP | Financeiro |
+|---|---|---|
+| Registro da origem da transação | Sim — `Donation`, `GiftEntry`, `GiftBatch` | — |
+| Estado operacional no gateway | Sim — `status` da `Donation` | — |
+| Publicação de evento via outbox | Sim | — |
+| Consumo de evento via inbox | — | Sim |
+| Ledger contábil oficial | — | Sim |
+| Conciliação com gateway | — | Sim |
+| Relatórios contábeis e prestação de contas | — | Sim |
+| Dashboards operacionais (não oficiais) | Pode exibir dados próprios, rotulados | — |
+
+Dashboards financeiros do TAP devem ser rotulados como "dados operacionais — não consolidados pelo Financeiro" até confirmação de consumo pelo inbox.
+
+---
+
+### Estrutura base do evento
+
+```typescript
+type TapFinanceEvent = {
+  event_id: string          // uuid v4 — único e imutável por ocorrência
+  schema_version: 1         // versão deste contrato; consumidor deve rejeitar versão desconhecida
+  event_type: TapFinanceEventType
+  aggregate_type: 'Donation' | 'GiftEntry' | 'GiftBatch'
+  aggregate_id: string      // id da entidade de origem no TAP
+  producer_module: 'tap'
+  organization_id: string   // tenant
+  campus_id: string
+  occurred_at: string       // ISO 8601 UTC
+  idempotency_key: string   // chave de deduplicação para o Financeiro
+  payload: TapFinanceEventPayload
+}
+```
+
+---
+
+### Eventos, payloads e chaves de idempotência
+
+#### tap.donation.confirmed
+
+Publicado quando o gateway confirma pagamento. Ocorre exatamente uma vez por doação confirmada.
+
+**Idempotency key:** `{organization_id}:{gateway_provider}:{gateway_transaction_id}`
+
+```typescript
+payload: {
+  donation_id: string,
+  fund_id: string,
+  amount: number,                                           // em centavos (integer)
+  currency: 'BRL',
+  method: 'pix' | 'credit_card' | 'debit_card',
+  gateway_provider: string,
+  gateway_transaction_id: string,
+  gateway_charge_id: string | null,
+  confirmed_at: string,                                     // ISO 8601 UTC
+  campus_id: string,
+  tap_device_id: string | null,
+  is_anonymous: boolean,
+  receipt_requested: boolean
+}
+```
+
+#### tap.donation.failed
+
+Publicado quando o gateway confirma falha definitiva (não tentativa transitória). Doações com TTL expirado sem pagamento **não** geram este evento.
+
+**Idempotency key:** `{organization_id}:{donation_id}:failed`
+
+```typescript
+payload: {
+  donation_id: string,
+  fund_id: string,
+  amount: number,                                           // em centavos
+  method: string,
+  gateway_provider: string,
+  gateway_charge_id: string | null,
+  failure_reason: string,                                   // código retornado pelo gateway
+  failed_at: string                                         // ISO 8601 UTC
+}
+```
+
+#### tap.donation.refunded
+
+Publicado quando reembolso é confirmado pelo gateway. No MVP, apenas reembolso total é suportado.
+
+**Idempotency key:** `{organization_id}:{gateway_provider}:{refund_id}`
+
+```typescript
+payload: {
+  donation_id: string,
+  refund_id: string,                                        // id do reembolso no gateway
+  amount: number,                                           // em centavos — igual ao original no MVP
+  gateway_provider: string,
+  gateway_transaction_id: string,
+  refunded_at: string,                                      // ISO 8601 UTC
+  reason: string                                            // motivo registrado pelo operador
+}
+```
+
+#### tap.gift_entry.created
+
+Publicado quando um `GiftEntry` é criado. Cada lançamento gera um evento independente.
+
+**Idempotency key:** `{organization_id}:{gift_entry_id}`
+
+```typescript
+payload: {
+  gift_entry_id: string,
+  gift_batch_id: string,
+  fund_id: string,
+  amount: number,                                           // em centavos
+  method: 'cash' | 'check' | 'external_pix' | 'other',
+  donated_at: string,                                       // date ISO 8601 (data física, não timestamp)
+  recorded_by: string,                                      // user_id do operador
+  reference: string | null                                  // número de cheque ou comprovante
+}
+```
+
+#### tap.gift_batch.closed
+
+Publicado quando o lote de Gift Entry é fechado. Contém totais consolidados por fundo e por método.
+
+**Idempotency key:** `{organization_id}:{gift_batch_id}:closed_at:{closed_at}`
+
+```typescript
+payload: {
+  gift_batch_id: string,
+  campus_id: string,
+  closed_by: string,                                        // user_id
+  closed_at: string,                                        // ISO 8601 UTC
+  entry_count: number,
+  total_amount_by_fund: Record<string, number>,             // fund_id → total em centavos
+  total_amount_by_method: Record<string, number>            // method → total em centavos
+}
+```
+
+---
+
+### Garantias de processamento
+
+1. TAP grava o evento no outbox na **mesma transação** que confirma doação, cria Gift Entry ou fecha lote — se a transação falhar, o evento não é publicado.
+2. Um worker publica eventos `pending` do outbox com retry automático e backoff exponencial.
+3. Financeiro registra `event_id` e `idempotency_key` no inbox **antes** de aplicar qualquer efeito contábil.
+4. Reprocessamento do mesmo evento (retry ou reenvio) produz o mesmo resultado e **nunca duplica** receita, lançamento, relatório ou conciliação.
+5. Financeiro trata evento com `idempotency_key` já processado como sucesso — nunca como erro.
+6. Evento com `schema_version` desconhecido vai para dead letter queue, nunca descartado silenciosamente.
+
+---
+
+### Campos que nunca aparecem no payload financeiro
+
+Os dados abaixo são sensíveis e não trafegam nos eventos. Quando o Financeiro precisar deles, acessa pelo `donation_id` via API autorizada do TAP.
+
+- CPF do doador (mesmo criptografado)
+- Nome completo e e-mail do doador
+- Dados de cartão ou token de cartão
+- Credenciais ou chaves de gateway
+
+---
+
+### Decisão formal: TAP não cria cadastro de Pessoas/visitantes
+
+No escopo atual:
+- Nenhuma submissão de formulário pastoral cria ou atualiza `Person`.
+- Nenhuma doação vincula automaticamente `donor_person_id`.
+- O campo `donor_person_id` em `Donation` e `GiftEntry` existe para uso futuro e permanece `null` no escopo atual.
+- Mudança nesta decisão exige contrato próprio com o módulo Pessoas antes de qualquer implementação.
+
+---
+
+### Gate para aceite formal do Financeiro
+
+O MVP comercial (Pix em produção e Gift Entry) **não pode ser liberado** sem que o módulo Financeiro:
+
+1. Revise os 5 eventos, payloads e chaves de idempotência acima.
+2. Confirme que o payload é suficiente para os fluxos de conciliação e relatório contábil.
+3. Registre o aceite formal em issue dedicada ou comentário nesta issue (#30).
+
+Até o aceite formal, Pix e Gift Entry permanecem em piloto restrito.
 
 ---
 
