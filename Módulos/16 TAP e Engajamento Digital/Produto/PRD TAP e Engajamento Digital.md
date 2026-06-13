@@ -320,6 +320,98 @@ Ações sensíveis exigem `AuditLog`: visualizar submissão pastoral sensível, 
 
 ---
 
+#### Tabela de ações auditáveis obrigatórias
+
+| Ação | Aggregate | Campos mínimos no AuditLog |
+|---|---|---|
+| Visualizar submissão pastoral sensível (oração, decisão, batismo) | `PastoralFormSubmission` | user_id, submission_id, form_type, campus_id, timestamp |
+| Exportar submissões pastorais | `PastoralFormSubmission` | user_id, campus_id, form_type, filtros aplicados, count exportado, timestamp |
+| Visualizar doação identificada | `Donation` | user_id, donation_id, campos visualizados, timestamp |
+| Visualizar CPF ou e-mail de doador | `Donation` | user_id, donation_id, campo acessado, timestamp |
+| Exportar relatório financeiro | `Donation` | user_id, campus_id, período, method_filter, count exportado, timestamp |
+| Trocar destino ativo ao vivo | `TapGroup` | user_id, group_id, destination_anterior, destination_novo, origem (manual/propresenter/schedule), duração, timestamp |
+| Publicar URL externa fora da política | `Destination` | user_id, destination_id, domain, policy_status anterior, timestamp |
+| Alterar gateway ou rotacionar segredo | `GatewayConfig` | user_id, campus_id, provider, ação (create/rotate/disable), timestamp |
+| Solicitar, aprovar ou executar reembolso | `Donation` | user_id, donation_id, amount, reason, status_anterior, status_novo, timestamp |
+| Fechar ou reabrir lote de Gift Entry | `GiftBatch` | user_id, batch_id, status_anterior, status_novo, justificativa (obrigatória no reabrir), timestamp |
+| Alterar papel ou permissão de usuário | `UserRole` | executor_user_id, target_user_id, role_anterior, role_novo, campus_scope, timestamp |
+| Anonimizar ou excluir dado pessoal | `PastoralFormSubmission` / `Donation` | user_id, aggregate_id, aggregate_type, campos afetados, motivo legal, timestamp |
+
+---
+
+#### Tratamento de IP e user-agent
+
+IP de origem e user-agent do visitante são dados técnicos, não dados pessoais identificadores no contexto do redirect. Regras:
+
+- **Não armazenar IP completo em produção.** Usar um dos mecanismos abaixo:
+  - Truncamento: remover último octeto (IPv4) ou últimos 80 bits (IPv6)
+  - Hash efêmero: HMAC-SHA256 com chave rotacionada diariamente (o hash muda a cada dia, tornando correlação impossível após 24h)
+  - Agregação imediata: contar apenas, sem armazenar o valor
+- **User-agent:** armazenar apenas categoria (mobile/desktop/bot), não a string completa, ou usar hash efêmero com mesma rotação do IP
+- **Retenção técnica:** dados de rate limit e detecção de abuso podem manter hash de IP por até 24h; após isso, descartar
+- `TapEvent.ip_hash` e `TapEvent.user_agent_hash` seguem estas regras — nunca armazenar IP ou user-agent em texto puro
+
+---
+
+#### Textos de consentimento — v1
+
+Os textos abaixo são as versões iniciais (v1) para cada tipo de formulário pastoral. Cada versão deve ter identificador único (`consent_version`) armazenado junto à submissão. Alterar qualquer texto cria uma nova versão; versões anteriores permanecem válidas para submissões existentes.
+
+---
+
+**Cartão de visitante — `visitor_v1`**
+
+> Ao enviar este formulário, você autoriza a [Nome da Igreja] a armazenar e usar os dados informados exclusivamente para fins de acompanhamento pastoral: retorno de contato pela equipe responsável, comunicação sobre atividades da comunidade e registro interno de presença. Seus dados não serão compartilhados com terceiros, vendidos nem usados para fins comerciais. Você pode solicitar a exclusão dos seus dados a qualquer momento pelo e-mail [e-mail da igreja]. Retemos seus dados pelo período necessário ao acompanhamento pastoral, com revisão anual.
+
+---
+
+**Pedido de oração — `prayer_v1`**
+
+> Ao enviar este pedido, você autoriza a [Nome da Igreja] a armazenar e compartilhar seu pedido exclusivamente com a equipe de oração pastoral autorizada, para fins de cuidado espiritual. O envio é voluntário e pode ser feito anonimamente. Pedidos identificados são retidos pelo período de acompanhamento ativo e revisados periodicamente. Pedidos anônimos são retidos por até 90 dias. Você pode solicitar a exclusão pelo e-mail [e-mail da igreja].
+
+---
+
+**Decisão por Jesus / Batismo — `decision_v1`**
+
+> Ao registrar sua decisão, você autoriza a [Nome da Igreja] a armazenar seus dados e compartilhá-los com a equipe pastoral responsável pelo acompanhamento de novos crentes e candidatos ao batismo. Seus dados são usados exclusivamente para o acompanhamento espiritual solicitado e não serão divulgados publicamente. Retemos seus dados pelo período de acompanhamento pastoral ativo. Você pode solicitar acesso ou exclusão pelo e-mail [e-mail da igreja].
+
+---
+
+**Inscrição em célula — `cell_group_v1`**
+
+> Ao se inscrever, você autoriza a [Nome da Igreja] a armazenar seus dados e compartilhá-los com a equipe responsável pelos grupos de crescimento, para fins de encaminhamento ao grupo mais adequado ao seu perfil e disponibilidade. Seus dados não são compartilhados fora da estrutura pastoral da igreja. Retemos seus dados enquanto você estiver participando de um grupo ou por até 12 meses após a última interação. Você pode solicitar exclusão pelo e-mail [e-mail da igreja].
+
+---
+
+#### Fluxo de anonimização e exclusão
+
+O fluxo abaixo se aplica quando o titular solicita exclusão ou quando a política de retenção é atingida.
+
+**1. Recebimento do pedido**
+- Pedido registrado pelo owner ou admin autorizado com: nome/identificador do titular, tipo de dado, motivo (solicitação do titular / retenção expirada / decisão judicial)
+- `AuditLog` criado imediatamente
+
+**2. Localização dos dados**
+- Buscar por nome, e-mail ou telefone nas tabelas: `PastoralFormSubmission`, `Donation` (donor_name, donor_email), `GiftEntry` (donor_name)
+- Registrar IDs encontrados no log do pedido
+
+**3. Verificação de obrigação legal**
+- `Donation` e `GiftEntry` identificados podem estar sujeitos a obrigação fiscal de retenção (5 anos conforme CTN)
+- Quando obrigação fiscal se aplica: anonimizar campos pessoais (nome, e-mail, CPF), manter campos financeiros intactos
+- Quando não se aplica: exclusão física ou anonimização completa do registro
+
+**4. Execução**
+- Anonimização: substituir campos pessoais por `[REMOVIDO]` ou `null`; manter `id`, `fund_id`, `amount`, `occurred_at` e `organization_id` para integridade financeira
+- Exclusão física: apenas para registros sem obrigação legal e sem referência em evento financeiro já processado pelo Financeiro
+- `AuditLog` atualizado com campos modificados, IDs afetados e resultado
+
+**5. Confirmação ao titular**
+- Confirmação por e-mail (se disponível) ou registro interno de que o pedido foi atendido
+
+**Regra importante:** submissão pastoral com `consent_version` válido não pode ser excluída sem executar este fluxo documentado. Exclusão direta pelo banco sem AuditLog viola a rastreabilidade exigida.
+
+---
+
 ## 5. Pacotes comerciais
 
 ### Essencial
