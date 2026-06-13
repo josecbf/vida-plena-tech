@@ -404,6 +404,168 @@ Até o aceite formal, Pix e Gift Entry permanecem em piloto restrito.
 
 ---
 
+## Schemas Formais de Destination.config
+
+> Este documento é a fonte autoritativa dos schemas de configuração de destino. Toda implementação deve validar `config` contra o schema correspondente ao `type` + `config_version` antes de persistir.
+
+---
+
+### Versionamento e migração
+
+- Cada destino armazena `config_version: integer` ao lado do `config: jsonb`.
+- A versão atual de todos os tipos é **1**.
+- Quando um schema evoluir, a versão é incrementada (ex: v1 → v2).
+- Destinos existentes em versão anterior continuam válidos e legíveis; a migração é **opt-in**.
+- Migração obrigatória exige script documentado e PR no backlog técnico antes de publicar a nova versão.
+- A renderização pública sempre verifica `config_version` antes de tentar renderizar; versão desconhecida deve servir contingência, nunca crash.
+
+---
+
+### Tipo: `offering` — v1
+
+Tela de doação com seleção de valor, fundo e método de pagamento.
+
+```typescript
+// config_version: 1
+type OfferingConfig = {
+  suggested_values: number[]          // valores em centavos; mínimo 1, máximo 6 botões
+  fund_ids: string[]                  // UUIDs dos fundos elegíveis; mínimo 1
+  allow_custom_value: boolean         // permite campo "Outro valor"
+  collect_email: boolean
+  collect_name: boolean
+  collect_cpf: boolean
+  allow_anonymous: boolean            // se false, nome é obrigatório
+  min_amount: number                  // centavos; 0 = sem mínimo
+  max_amount?: number                 // centavos; ausente = sem máximo
+  pix_ttl_seconds: number             // TTL do QR Pix; padrão 600 (10 min)
+}
+
+// Validações obrigatórias antes de publicar:
+// - suggested_values.length entre 1 e 6
+// - fund_ids.length >= 1 e todos os UUIDs pertencem ao mesmo tenant
+// - pix_ttl_seconds entre 60 e 3600
+// - min_amount >= 0
+// - max_amount > min_amount quando presente
+// - allow_anonymous e collect_cpf não conflitam com política do fundo
+```
+
+---
+
+### Tipo: `own_page` — v1
+
+Página própria da plataforma com imagem, título, texto e botão.
+
+```typescript
+// config_version: 1
+type OwnPageConfig = {
+  title: string                       // obrigatório; máximo 120 caracteres
+  body: string                        // obrigatório; máximo 1200 caracteres; sem HTML
+  button_label: string                // obrigatório; máximo 60 caracteres
+  button_url?: string                 // opcional; quando presente, segue regras de external_url
+  image_url?: string                  // opcional; URL do CDN da plataforma após upload
+  image_alt?: string                  // recomendado quando image_url presente; máximo 200 caracteres
+}
+
+// Validações obrigatórias antes de publicar:
+// - title, body, button_label não podem estar vazios
+// - Nenhum campo aceita HTML arbitrário, tags script, iframe ou atributos de evento
+// - button_url, quando presente, deve passar as mesmas validações de external_url (HTTPS, scheme seguro)
+// - image_url deve ser do domínio cdn.plataforma.com.br ou equivalente controlado
+```
+
+---
+
+### Tipo: `external_url` — v1
+
+Redirect direto para URL externa após validação de segurança.
+
+```typescript
+// config_version: 1
+type ExternalUrlConfig = {
+  url: string                         // URL original digitada pelo operador
+  normalized_url: string              // versão persistida após parse e normalização
+  domain: string                      // extraído de normalized_url; exibido no preview
+  policy_status: 'allowed' | 'requires_approval' | 'blocked'
+  preview_title?: string              // meta title capturado opcionalmente
+  preview_description?: string
+  approval_reason?: string            // preenchido quando policy_status = requires_approval
+}
+
+// Validações obrigatórias antes de publicar:
+// - url deve ser absoluta e usar https:// (exceto ambiente local/dev)
+// - Schemes bloqueados: javascript: data: file: mailto: tel: e URLs relativas
+// - normalized_url é o resultado de: trim → lowercase no host → parse → serialização canônica
+// - policy_status = 'blocked' impede publicação em qualquer circunstância
+// - policy_status = 'requires_approval' exige owner/admin ou permissão tap.external_url.publish
+// - Alterar url ou normalized_url em destino publicado recalcula policy_status e exige revalidação
+```
+
+---
+
+### Tipo: `pastoral_form` — v1
+
+Formulário pastoral com consentimento versionado.
+
+```typescript
+// config_version: 1
+type PastoralFormConfig = {
+  form_type: 'visitor' | 'prayer' | 'decision' | 'cell_group'
+  allow_anonymous: boolean            // apenas prayer suporta anônimo; outros ignoram este campo
+  consent_text_version: string        // identificador da versão do texto de consentimento
+  custom_fields?: Array<{             // campos adicionais opcionais; máximo 5
+    key: string                       // identificador snake_case
+    label: string                     // rótulo exibido ao visitante
+    type: 'text' | 'select' | 'checkbox'
+    required: boolean
+    options?: string[]                // apenas quando type = select
+  }>
+}
+
+// Validações obrigatórias antes de publicar:
+// - consent_text_version deve existir na tabela de textos de consentimento versionados
+// - allow_anonymous = true só é aceito quando form_type = 'prayer'
+// - custom_fields[].key deve ser único dentro do formulário
+// - custom_fields[].options obrigatório quando type = select
+// - Campos que coletam dado pessoal direto (nome, telefone, CPF) devem ter finalidade documentada no mapa LGPD
+```
+
+---
+
+### Tipo: `event_registration` — v1
+
+Link para inscrição em evento, interno ou externo.
+
+```typescript
+// config_version: 1
+type EventRegistrationConfig = {
+  mode: 'external_url' | 'events_module'
+  // quando mode = external_url:
+  url?: string
+  normalized_url?: string
+  domain?: string
+  policy_status?: 'allowed' | 'requires_approval' | 'blocked'
+  // quando mode = events_module:
+  event_id?: string                   // UUID do evento no módulo Eventos
+}
+
+// Validações obrigatórias antes de publicar:
+// - mode = external_url: url presente e válida pelas mesmas regras de ExternalUrlConfig
+// - mode = events_module: event_id presente, existente e pertencente ao mesmo tenant
+// - modo events_module disponível apenas quando módulo Eventos estiver ativo para a organização
+```
+
+---
+
+### Regras cross-tipo
+
+1. Nenhum `config` aceita campos não declarados no schema — adicionar propriedades extras causa erro de validação.
+2. Validação usa schema declarativo (Zod ou JSON Schema) — nunca lógica ad hoc no código de persisência.
+3. Destino com `config` inválido não pode transitar de `draft` para `active`.
+4. Destino `active` que receba edição invalidando o `config` retorna para `draft` antes de reativar.
+5. A versão do schema (`config_version`) é imutável após publicação — editar o destino cria novo rascunho com mesma ou nova versão.
+
+---
+
 ## Riscos técnicos abertos
 
 ### RT-01 — Latência do ProPresenter → backend em redes lentas
