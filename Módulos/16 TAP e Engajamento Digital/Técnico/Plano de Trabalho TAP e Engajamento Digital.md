@@ -141,8 +141,8 @@ O Alpha operacional só é considerado pronto quando o roteiro abaixo for execut
 
 **Entregáveis:**
 - Agendamento de trocas de destino por horário (recorrente e pontual)
-- App auxiliar ProPresenter (Electron, Mac)
-- Integração ProPresenter → keywords → troca automática
+- App auxiliar ProPresenter (Electron, Mac) — **Backend implementado; app Electron pendente de issue separada**
+- Integração ProPresenter → keywords → troca automática — **Backend implementado (issue #44)**
 - Formulários pastorais (visitante, oração, decisão, célula)
 - Consentimento versionado em formulários pastorais
 - Registros operacionais de formulários sem criação de cadastro de Pessoas
