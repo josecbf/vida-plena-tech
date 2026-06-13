@@ -165,29 +165,50 @@ approved_by: uuid → User (nullable)
 created_at, updated_at: timestamp
 ```
 
-**config por tipo:**
+**config por tipo (schemas v1):**
+
+O campo `config_version` na tabela `Destination` indica qual versão do schema está em uso. Validação ocorre antes de persistir. Regras de migração de versão estão em `Decisões e Riscos Técnicos TAP e Engajamento Digital.md` (ADR-09).
+
+---
+
+**offering v1**
 
 ```typescript
-// offering
+// config_version: 1
 {
-  suggested_values: number[],
-  fund_ids: uuid[],
+  suggested_values: number[],      // máx 6 itens; cada valor > 0; em centavos (integer)
+  fund_ids: uuid[],                // mínimo 1; devem pertencer à organização e estar ativos
   allow_custom_value: boolean,
   collect_email: boolean,
   collect_name: boolean,
   collect_cpf: boolean,
   allow_anonymous: boolean,
-  min_amount: number,
-  max_amount?: number,
-  pix_ttl_seconds: number
+  min_amount: number,              // obrigatório; > 0; em centavos
+  max_amount?: number,             // quando presente: > min_amount
+  pix_ttl_seconds: number          // obrigatório; entre 300 (5 min) e 86400 (24 h)
 }
+```
 
-// own_page
+**Validações `offering` v1:**
+- `suggested_values`: array não vazio, máximo 6 itens, cada valor > 0.
+- `fund_ids`: mínimo 1 fundo ativo da organização.
+- `min_amount`: obrigatório, > 0.
+- `max_amount`: quando informado, deve ser > `min_amount`.
+- `pix_ttl_seconds`: obrigatório, entre 300 e 86400.
+- `collect_cpf = true` exige `collect_name = true` (CPF sem nome não gera recibo válido).
+- Publicar exige pelo menos um fundo e configuração de gateway de Pix ativa no campus.
+
+---
+
+**own_page v1**
+
+```typescript
+// config_version: 1
 {
   title: string,
   body: string,
   button_label: string,
-  button_url?: string,
+  button_url?: string,             // quando presente, segue regras de external_url
   image_url?: string,
   image_alt?: string
 }
@@ -195,42 +216,73 @@ created_at, updated_at: timestamp
 
 **Validações `own_page` v1:**
 - `title`, `body` e `button_label` são obrigatórios para publicação.
-- `button_url`, quando informado, usa as mesmas regras de `external_url`.
+- `button_url`, quando informado, usa as mesmas regras de validação de `external_url`.
 - Não permite HTML arbitrário, scripts embutidos ou coleta de dados pessoais.
 - Imagem é opcional; quando houver imagem, `image_alt` é recomendado.
 
-```typescript
-// own_page v1 - exemplo válido
-{
-  title: string,
-  body: string,
-  button_label: string,
-  button_url?: "https://forms.exemplo.org/inscricao",
-  image_url?: "https://cdn.plataforma.com.br/tap/campanha.png",
-  image_alt?: "Arte da campanha"
-}
+---
 
-// pastoral_form
+**pastoral_form v1**
+
+```typescript
+// config_version: 1
 {
-  form_type: visitor | prayer | decision | cell_group,
-  custom_fields?: Field[],
-  consent_text_version: string,
+  form_type: 'visitor' | 'prayer' | 'decision' | 'baptism' | 'cell_group',
+  custom_fields?: Field[],         // cada Field: { field_id, label, type, required }
+  consent_text_version: string,    // referência a versão de texto registrada na organização
   allow_anonymous: boolean
 }
 
-// event_registration
+// Field
 {
-  mode: external_url | events_module,
-  url?: string,
-  event_id?: uuid
+  field_id: string,
+  label: string,
+  type: 'text' | 'email' | 'phone' | 'select' | 'checkbox',
+  required: boolean,
+  options?: string[]               // obrigatório quando type = 'select'
 }
+```
 
-// external_url
+**Validações `pastoral_form` v1:**
+- `form_type`: obrigatório; deve ser um dos valores definidos.
+- `consent_text_version`: obrigatório; deve referenciar versão de consentimento ativa na organização.
+- `allow_anonymous`: obrigatório.
+- `custom_fields`: opcional; quando presente, cada campo deve ter `field_id` único, `label` não vazio e `type` válido; `type = select` exige `options` não vazio.
+- Publicar exige `consent_text_version` válida.
+- Dados capturados ficam como `PastoralFormSubmission`; não criam `Person` no escopo atual.
+
+---
+
+**event_registration v1**
+
+```typescript
+// config_version: 1
+{
+  mode: 'external_url' | 'events_module',
+  url?: string,                    // obrigatório quando mode = external_url
+  event_id?: uuid                  // obrigatório quando mode = events_module
+}
+```
+
+**Validações `event_registration` v1:**
+- `mode`: obrigatório.
+- `url` e `event_id` são mutuamente exclusivos: exatamente um presente conforme o `mode`.
+- Quando `mode = external_url`: `url` é obrigatório e segue as regras de validação de `external_url` (https, domínio, policy_status).
+- Quando `mode = events_module`: `event_id` é obrigatório e deve referenciar evento ativo da organização.
+- Publicar `mode = events_module` requer que o módulo de Eventos esteja ativo para a organização (feature flag).
+- Publicar `mode = external_url` exige mesma aprovação de domínio de `external_url`.
+
+---
+
+**external_url v1**
+
+```typescript
+// config_version: 1
 {
   url: string,
   normalized_url: string,
   domain: string,
-  policy_status: allowed | requires_approval | blocked,
+  policy_status: 'allowed' | 'requires_approval' | 'blocked',
   preview_title?: string,
   preview_description?: string,
   approval_reason?: string
@@ -245,6 +297,8 @@ created_at, updated_at: timestamp
 - `policy_status = requires_approval` exige owner/admin ou permissão `tap.external_url.publish`.
 - Schemes `javascript:`, `data:`, `file:`, `mailto:`, `tel:` e URLs relativas são inválidos.
 - Alterar `url`, `normalized_url` ou `domain` em destino publicado exige nova validação e auditoria.
+
+---
 
 ### ProPresenterKeyword
 ```
