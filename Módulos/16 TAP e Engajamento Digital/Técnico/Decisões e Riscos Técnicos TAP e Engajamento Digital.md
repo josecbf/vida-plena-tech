@@ -214,8 +214,8 @@ tags:
 
 ## Contrato Financeiro TAP → Financeiro
 
-**Status de aceite:** Pendente de aceite formal pelo módulo Financeiro
-**Gate para MVP comercial:** Este contrato deve ser aceito antes de Pix e Gift Entry saírem do piloto para produção comercial
+**Status de aceite:** ✅ Aceito em 2026-06-16. O módulo Financeiro reconhece os eventos `tap.donation.*` e `tap.gift_entry.*` como fonte de dados operacionais TAP, com o Financeiro sendo a fonte contábil oficial após consumo via inbox.
+**Gate para MVP comercial:** Fechado.
 
 ---
 
@@ -599,3 +599,35 @@ Destino externo pode ser usado para phishing. Mitigação: validação HTTPS, pr
 ### RT-08 — Reembolso parcial
 
 O modelo precisa decidir se suporta reembolso parcial. Para MVP, suportar apenas reembolso total, salvo decisão contrária documentada. Reembolso parcial fica como requisito futuro se não entrar no schema inicial.
+
+---
+
+## ADR-13 — Nomenclatura de Destination.type: EN no schema, PT-BR nas rotas públicas
+
+**Contexto:** A documentação original misturava nomes em português (`inscricao_evento`, `formulario_pastoral`, `pagina_propria`) com inglês (`event_registration`, `pastoral_form`, `own_page`). O schema SQL e o código TypeScript usam inglês; as URLs públicas visitadas pelo fiel usam português.
+
+**Decisão:** Manter convenção dupla intencional:
+
+| Camada | Convenção | Exemplo |
+|---|---|---|
+| `Destination.type` (schema, TypeScript, API) | Inglês | `offering`, `event_registration`, `pastoral_form`, `own_page`, `external_url` |
+| Rotas públicas do visitante (URL) | Português | `/oferta/{id}`, `/formulario/{id}`, `/pagina/{id}` |
+
+**Motivação:** Os valores do enum são internos ao sistema e nunca visíveis ao usuário final. As URLs são o ponto de contato do visitante — devem ser legíveis e culturalmente adequadas para o contexto brasileiro/eclesiástico.
+
+**Consequência:** Toda documentação deve usar os valores EN quando referenciar `Destination.type`, `enum`, schema ou TypeScript. Pode usar PT-BR apenas ao descrever a URL de destino ou a experiência do visitante.
+
+---
+
+## ADR-14 — Gateway Asaas: suportado em infraestrutura, pós-MVP em go-to-market
+
+**Contexto:** O código possui `src/lib/payments/asaas.ts` e a migration `20260616201940_allow_asaas_payment_gateway.sql` estendeu o CHECK constraint para `('mercadopago', 'asaas')`. O Stress Test definiu "Gateway v1 = Mercado Pago apenas".
+
+**Decisão:** Asaas está implementado e o banco aceita registros com `provider = 'asaas'`, mas o onboarding oficial e os contratos comerciais de V1/MVP usam apenas Mercado Pago. Asaas passa a ser opção disponível a partir da Fase de expansão de gateways (pós-MVP).
+
+**Motivação:** Manter o código evita reescrita futura. O CHECK no banco permite registro desde já. A restrição é de produto e processo — não de código.
+
+**Consequência:**
+- Não oferecer Asaas como opção no onboarding de gateway até decisão comercial explícita.
+- Testes de integração e QA com Asaas ficam opcionais até ativação oficial.
+- Quando ativado, criar ADR de atualização documentando data, motivo e diferenças de comportamento vs Mercado Pago.

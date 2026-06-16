@@ -41,6 +41,24 @@ Evolucao:
 3. banco dedicado para enterprise;
 4. clusters regionais para plataforma global.
 
+## Papéis canônicos (roles)
+
+Os papéis abaixo são a definição oficial. Qualquer divergência em documentos de módulo deve ser corrigida para usar estes nomes exatos.
+
+| Papel | Nível | Descrição | Schema SQL |
+|---|---|---|---|
+| `owner` | 100 | Dono da organização. Acesso total, incluindo billing e configuração de gateway | ✅ desde inicial |
+| `admin` | 80 | Administrador geral. Não acessa dados financeiros sensíveis por padrão | ✅ desde inicial |
+| `financeiro` | 60 | Acesso a doações, relatórios financeiros e lotes de dinheiro físico | ✅ desde inicial |
+| `tesoureiro` | 50 | Acesso a Gift Entry (lançamento de dinheiro físico). Subconjunto do financeiro | ✅ adicionado em Sprint 0 |
+| `comunicacao` | 40 | Gerencia destinos TAP, grupos, dispositivos e conteúdo público | ✅ desde inicial |
+| `pastoral` | 30 | Acesso a dados e formulários pastorais sensíveis | ✅ desde inicial |
+| `viewer` | 10 | Leitura somente. Sem acesso a dados sensíveis | ✅ desde inicial |
+
+**Origem da divergência histórica:** o TypeScript definia `tesoureiro` mas a migration inicial do banco omitiu esse papel. Corrigido na migration `20260614000005_sprint0_fixes.sql`. Não há mais divergência entre schema SQL e TypeScript.
+
+**Regra de atualização:** qualquer novo papel deve ser adicionado simultaneamente a: (1) migration SQL com ALTER TABLE CHECK constraint, (2) `UserRole` type em `src/lib/auth/roles.ts`, (3) `z.enum(...)` em `src/app/api/tap/admin/users/route.ts`, (4) esta tabela.
+
 ## Modelo de permissao
 
 Combinar:

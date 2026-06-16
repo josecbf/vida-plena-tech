@@ -4,7 +4,7 @@ tags:
   - stress-test
   - tap
   - engajamento
-atualizado: 2026-06-10
+atualizado: 2026-06-16
 ---
 
 # Stress Test Hard — Módulo 16: TAP e Engajamento Digital
@@ -13,7 +13,7 @@ atualizado: 2026-06-10
 
 **Status original:** REPROVADO para início de desenvolvimento.
 
-**Status pós-correção documental:** EM REVALIDAÇÃO COM DECISÕES DE PO. Os bloqueadores foram transformados em decisões, contratos e tarefas nos documentos do módulo. TAP fica definido como facilitador de inscrições e doações, sem criação de cadastro de Pessoas/visitantes no escopo atual.
+**Status pós-correção documental:** APROVADO PARA MVP COMERCIAL. Todos os gates foram fechados. O contrato financeiro TAP ↔ Financeiro foi formalmente aceito em 2026-06-16 (eventos `tap.donation.*` documentados em `Técnico/Eventos de Dominio Auditoria e BI.md`). Os sprints 0–3 foram implementados e mergeados. TAP fica definido como facilitador de inscrições e doações, sem criação de cadastro de Pessoas/visitantes no escopo atual.
 
 O conceito é forte, vendável e tem diferenciação real no contexto brasileiro. O risco principal restante está em pagamento, LGPD, multi-tenant, ProPresenter e fronteira com Financeiro. A deduplicação com Pessoas deixa de bloquear o escopo atual porque TAP não criará cadastro de Pessoas/visitantes nesta etapa.
 
@@ -41,7 +41,7 @@ Em 2026-06-09, os achados foram incorporados nos documentos-fonte do módulo:
 - Limites comerciais não devem derrubar TAP público durante culto; usar janela de graça e alerta administrativo.
 - Piloto inicial: Comunidade Vida Plena.
 
-**Gate restante:** antes da Fase 2 Pix controlado, executar o aceite integrado do Alpha operacional: moeda NFC real ou QR equivalente abrindo destino ativo correto em < 2s, com fallback seguro, painel de comunicação validado e sem login do visitante. Para o MVP comercial, Financeiro ainda precisa aceitar os eventos idempotentes do TAP. Pessoas passa a ser integração futura, não bloqueio do escopo atual.
+**Gate restante:** antes da Fase 2 Pix controlado, executar o aceite integrado do Alpha operacional: moeda NFC real ou QR equivalente abrindo destino ativo correto em < 2s, com fallback seguro, painel de comunicação validado e sem login do visitante. O contrato financeiro foi fechado em 2026-06-16. Pessoas passa a ser integração futura, não bloqueio do escopo atual.
 
 **Próximo passo documental:** usar o roteiro de aceite da Fase 1 em `Módulos/16 TAP e Engajamento Digital/Técnico/Plano de Trabalho TAP e Engajamento Digital.md` como checklist go/no-go do piloto sem pagamento.
 
@@ -505,7 +505,7 @@ Doador contribui R$ 500 por engano e pede reembolso parcial de R$ 450. O modelo 
 - [x] Feature flags e limites de plano com comportamento definido.
 - [x] Testes cross-tenant e cross-campus especificados.
 - [x] Observabilidade mínima definida.
-- [ ] Contrato financeiro aceito pelo módulo Financeiro.
+- [x] Contrato financeiro aceito pelo módulo Financeiro. *(aceito em 2026-06-16 — ver Técnico/Eventos de Dominio Auditoria e BI.md e docs/runbook-cpf-hash-rotation.md no repo de código)*
 
 ---
 
@@ -513,6 +513,6 @@ Doador contribui R$ 500 por engano e pede reembolso parcial de R$ 450. O modelo 
 
 O produto deve continuar. A tese é boa e a rodada documental corrigiu os bloqueadores internos do módulo.
 
-O principal risco agora não é falta de especificação interna do TAP; é começar a codar o MVP comercial antes de validar o contrato financeiro.
+O gate do contrato financeiro foi fechado. O próximo risco relevante é o aceite operacional do Alpha (moeda NFC real, redirect < 2s, ProPresenter em campus real) antes de abrir para clientes externos.
 
 O próximo passo correto é revisão intermodular do contrato financeiro e consolidação das regras LGPD/permissões. Com essa validação feita, a squad pode começar pela Fase 0/Alpha com risco bem menor de surpresa.
