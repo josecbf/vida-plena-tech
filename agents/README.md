@@ -1,4 +1,4 @@
-# Agentes de IA — Videira
+# Agentes de IA — Vida Plena Tech
 
 Um agente de IA por papel dos Squads. Cada arquivo descreve **identidade, squad, modelo recomendado, escopo (o que pode/não pode tocar), skills, ferramentas e prompt de sistema**.
 

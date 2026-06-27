@@ -1,6 +1,6 @@
-# Videira
+# Vida Plena Tech
 
-Monorepo da **Videira** (nome provisório) — a **Plataforma Global para Igrejas**, uma solução modular e vendável para gestão eclesiástica. Reúne documentação de produto, a aplicação, pacotes compartilhados e os agentes de IA do projeto.
+Monorepo da **Vida Plena Tech** — braço de tecnologia da **Comunidade Vida Plena** (*"uma igreja que se importa"*). Uma **Plataforma Global para Igrejas**: solução modular e vendável para gestão eclesiástica. Reúne documentação de produto, a aplicação, pacotes compartilhados e os agentes de IA do projeto.
 
 ## Sobre o projeto
 

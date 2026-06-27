@@ -16,7 +16,7 @@ Use o bloco abaixo em **Gemini** e em **GPT** (separadamente). É autocontido: a
 Você é um arquiteto de software sênior, cético e direto, especialista em SaaS B2B multi-tenant, identidade/SSO e LGPD. Avalie criticamente a arquitetura abaixo. Não seja gentil: seu trabalho é encontrar furos.
 
 ## Contexto do produto
-"Videira" é uma plataforma SaaS modular para igrejas (inspirada no Planning Center). Há um módulo central "Pessoas" (cadastro único de pessoas, famílias, consentimentos, histórico) e ~15 módulos satélites (Ensino, Eventos, Financeiro, Crianças, etc.). Começa como monolito modular multi-tenant (1 tenant = 1 igreja; pode ter múltiplos campus). Cada registro tem tenantId. Eventos de domínio e auditoria desde o início. Regra de ouro: nenhum módulo pode reinventar pessoa, permissão, comunicação ou auditoria.
+"Vida Plena Tech" é uma plataforma SaaS modular para igrejas (inspirada no Planning Center). Há um módulo central "Pessoas" (cadastro único de pessoas, famílias, consentimentos, histórico) e ~15 módulos satélites (Ensino, Eventos, Financeiro, Crianças, etc.). Começa como monolito modular multi-tenant (1 tenant = 1 igreja; pode ter múltiplos campus). Cada registro tem tenantId. Eventos de domínio e auditoria desde o início. Regra de ouro: nenhum módulo pode reinventar pessoa, permissão, comunicação ou auditoria.
 
 ## Requisito que gera a tensão
 O módulo "Ensino" (trilhas/cursos/aulas/matrículas/progresso) precisa poder ser:

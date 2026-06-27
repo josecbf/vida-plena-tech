@@ -34,6 +34,32 @@ Contexto de produto completo está em `docs/` (após a reorg) — comece por `do
 
 ---
 
+## ⚡ VIRADA 2026-06-27 — leia primeiro
+
+Mudança de direção decidida nesta sessão (substitui partes do plano abaixo):
+
+- **Nome definido:** **Vida Plena Tech** — braço de tecnologia da **Comunidade Vida Plena** (`@comunidadevidaplena` · tagline *"uma igreja que se importa"*). Substitui o nome provisório "Videira".
+- **Identidade visual travada:** **monocromático preto & branco**, alto contraste, minimalista/premium. Tipografia **condensada bold em caixa-alta** (estilo Anton/Oswald) para títulos; caixa-alta leve com tracking largo para tagline; **Inter** para UI/corpo. **Sem cor de acento** (contraste P&B é a assinatura; só 1 cor funcional p/ estados de sistema). Marca = **"V" de linha tripla dentro de anel quebrado** (logo fornecida pelo dono). Motivo gráfico: o anel quebrado vira elemento de UI.
+- **Recomeçar do zero:** o **código** (`apps/` + `packages/`) e a **identidade** (era protótipo/mock descartável). **Preservar:** docs de produto, arquitetura técnica + ADRs, agentes de IA.
+- **Stack de produção TRAVADA:** **serverless-first (Opção 1)** — Next.js/Vercel + Supabase (Postgres+Auth+RLS) + Upstash + Mercado Pago/Pix + BigQuery (BI). Decisão fecha o ADR-0001 na direção serverless (atualizar ADR p/ "Aceito").
+- **Primeiro módulo a construir:** ainda **não decidido** (dono pediu calma; Pessoas é candidato natural por ser o centro canônico).
+- **Infra de dev:** repo **movido do Google Drive → `~/dev/vida-plena-tech`** (disco local, fora do CloudStorage) p/ resolver lentidão de I/O. Cópia no Drive mantida como backup até confirmação. Cluster de 5 VMs foi **descartado** (Claude não se paraleliza entre máquinas); se builds pesarem, plano B = **1 VM e2-standard-4 que eu gerencio** (~US$15–25/mês ligada sob demanda), não Cloud Workstations. Dono tem projeto GCP, falta logar `gcloud`.
+
+### Próximas ações imediatas (nova sessão na pasta local)
+1. ✅ `pnpm install` (2.4s) + build de teste (15.8s no disco local) — ambiente confirmado rápido, sem lag do Drive.
+2. ✅ Identidade gravada: **logo SVG** em `docs/Marca/assets/` (`logo-vidaplena-redesenho.svg` + `logo-preview-dark.svg`) + **especificação de marca** em `docs/Marca/Especificacao de Marca.md`.
+3. ✅ ADR-0001 → "Aceito" (serverless-first travado; risco do Gemini parqueado como gatilho de revisão por métrica). ✅ Rename "Videira" → "Vida Plena Tech" nos **arquivos preservados** (agents, README, docs/Técnico). **Pendente no rename:** escopo npm `@videira/*` em `package.json`/código — adiado porque o código será recomeçado do zero (novo escopo é decisão junto com o restart).
+4. ⏳ **Decidir o primeiro módulo de código real** (em aberto — decisão do dono; Pessoas é o candidato natural).
+
+### Pendências reais após esta sessão
+- **Decidir o primeiro módulo** (ação 4) — bloqueia o início do código novo.
+- **Recomeçar `apps/` + `packages/` do zero** com a nova identidade (P&B, condensada, anel quebrado) — decisão de quando apagar o protótipo Videira e qual escopo npm usar.
+- ADRs `Proposto` ainda abertos: 0002 (fonte da verdade TAP), 0005 (descontinuar Lite), 0006 (região/LGPD).
+- Identidade no Claude (fecha 3×2 da validação externa).
+- Deploy da demo na Vercel (se ainda fizer sentido antes do restart).
+
+---
+
 ## Estado atual
 
 **Demo dos 3 módulos pronta e buildando. Módulo 16 integrado. Análise de módulos + arquitetura de produção documentadas. Pendentes: deploy na Vercel e rodar os prompts de validação nas 3 IAs.**
@@ -115,4 +141,5 @@ git pull --ff-only   # se houver remoto
 - **2026-06-09:** Sessão inicial. Decisões (monorepo/Videira/demo mock). Criados `ze-start.md` e `CLAUDE-ZE.md`. **Fases 0, 1, 2, 3 concluídas:** reorg+monorepo (`e84840a`), 10 agentes de IA (`e4fb42b`), design system + demo Pessoas/Ensino com build validado. Falta deploy manual na Vercel.
 - **2026-06-10:** Área do aluno (`742f27b`), README com instruções de rodar local (`ee9fa19`), branch `ze-start` publicada no GitHub (`origin`). Iniciada **frente de arquitetura** (identidade plugável para Ensino standalone/embarcável) + prompt de validação Gemini/GPT. **Pendente:** receber doc do módulo 16.
 - **2026-06-11:** Merge da `main` na `ze-start` trazendo o **módulo 16 (TAP)** e revisões, com realocação automática para `docs/` (`177a0ef`). Módulo 16 lido e analisado (`b7b660b`). Criados **`Analise de Modulos.md`** (Tier A/B/C) e **`Arquitetura por Fases e Opcoes.md`** + prompt 3-IAs (`1770dd6`); arquitetura enriquecida com **tecnologias nomeadas e custos** (`678322f`) e com **herança do doc original, explicação não-técnica e justificativa de não-grátis** (`9af3623`). Controles atualizados (`bd81c7e`).
+- **2026-06-27:** **VIRADA executada (parte 1).** Ambiente local validado (`pnpm install` 2.4s, build 15.8s — sem lag do Drive). Identidade gravada em `docs/Marca/`: **especificação de marca** (P&B, condensada bold, logo "V" triplo em anel quebrado) + logo SVG (redesenho + preview dark). **ADR-0001 fechado → Aceito** (serverless-first; risco do Gemini no caminho de pagamento parqueado como gatilho de revisão por métrica). **Rename "Videira" → "Vida Plena Tech"** nos arquivos preservados (agents, README, docs/Técnico); escopo npm `@videira/*` adiado p/ o restart do código. **Pendente:** decidir o primeiro módulo (ação 4) e recomeçar `apps/`+`packages/`.
 - **2026-06-11 (cont.):** **Validação externa consolidada** — GPT+Claude (infra) e Gemini (identidade). Criados `Validacao de Arquitetura - Consolidacao.md` e **6 ADRs** em `docs/Técnico/ADRs/`. Principais convergências: caminho de escrita do TAP, idempotência/state-machine do Pix, pooling, RLS+testes de isolamento, worker persistente, custo da âncora maior. Gemini sugere descontinuar o **Lite** (ADR-0005). **Pendente:** fechar ADRs `Proposto` e decisões do dono.

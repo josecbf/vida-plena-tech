@@ -9,7 +9,7 @@ atualizado: 2026-06-11
 
 # Arquitetura por Fases e Opções
 
-Proposta de arquitetura de baixo custo inicial e escalável para produção, para a plataforma **Videira**. Complementa [[Arquitetura Plataforma]] (que já define "monólito modular, não microsserviços prematuros") e [[Modularidade e Identidade Plugavel]].
+Proposta de arquitetura de baixo custo inicial e escalável para produção, para a plataforma **Vida Plena Tech**. Complementa [[Arquitetura Plataforma]] (que já define "monólito modular, não microsserviços prematuros") e [[Modularidade e Identidade Plugavel]].
 
 ## Contexto e requisitos
 

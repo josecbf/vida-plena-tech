@@ -16,7 +16,7 @@ Use o bloco abaixo nas três IAs (separadamente). É autocontido. Compare as res
 Você é um arquiteto de software/infra sênior, cético e direto, especialista em SaaS B2B multi-tenant, sistemas de pagamento (Pix) e baixa latência. Avalie criticamente a arquitetura abaixo. Seu trabalho é encontrar furos, não agradar.
 
 ## Contexto do produto
-"Videira" é um SaaS modular para igrejas (estilo Planning Center), com um módulo central "Pessoas" (cadastro canônico, famílias, consentimento, LGPD, auditoria) e ~15 módulos satélites. Decisão já tomada: começar como MONÓLITO MODULAR multi-tenant (não microsserviços prematuros), com eventos de domínio e auditoria desde cedo. Todo registro tem tenant_id.
+"Vida Plena Tech" é um SaaS modular para igrejas (estilo Planning Center), com um módulo central "Pessoas" (cadastro canônico, famílias, consentimento, LGPD, auditoria) e ~15 módulos satélites. Decisão já tomada: começar como MONÓLITO MODULAR multi-tenant (não microsserviços prematuros), com eventos de domínio e auditoria desde cedo. Todo registro tem tenant_id.
 
 ## Restrições e metas
 - Construir primeiro 3 módulos: Pessoas (01), Ensino (02) e TAP/Engajamento Digital (16).
