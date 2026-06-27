@@ -158,6 +158,90 @@ quase sempre o seed não rodou (ou o Postgres não está no ar).
    pessoas no seu escopo; ids fora disso são recusados.
 6. **Batismo:** marque "Batizado" sem data → o backend recusa; desmarque → a data é zerada.
 
+### Rodada pré-Prover (2ª) — novos ajustes
+
+7. **Possível duplicidade NÃO bloqueia:** em `/cadastro`, cadastre alguém (nome + telefone).
+   Repita com o **mesmo nome e telefone, sem CPF** → aparece o aviso amarelo **e** o botão
+   **"Continuar mesmo assim"**. Clique → o cadastro é criado. Em `/auditoria`, o registro traz o
+   motivo "criado apesar de possível duplicidade". Vale igual em `/cadastro/gc/[token]` e `/e/[id]`.
+8. **CPF duplicado/ inválido ainda bloqueiam:** um CPF válido já existente → bloqueia (sem botão
+   de continuar); CPF inválido → bloqueia.
+9. **Captura de CPF pelo líder:** como `lider@`, edite uma pessoa do GC Graça **sem CPF** → o
+   campo CPF fica **editável**; preencha um CPF válido e salve (em `/auditoria` surge
+   `people.cpf_captured`, CONFIDENTIAL). Edite alguém que **já tem CPF** → o campo fica
+   **bloqueado** (líder não altera CPF existente). Como `admin@`, o CPF é sempre editável.
+10. **Pessoa via evento público é auditada em Pessoas:** ao se inscrever em `/e/[id]` sem cadastro
+    prévio, `/auditoria` mostra **dois** registros — `people.create` (criação da pessoa) e
+    `events.registration_created` (a inscrição).
+
+> Planos preparados:
+> [`docs/modules/prover-import-plan.md`](../../docs/modules/prover-import-plan.md) e
+> [`docs/modules/leadership-unit-plan.md`](../../docs/modules/leadership-unit-plan.md).
+
+---
+
+## Importação Prover — Fase 1 (Pessoas), modo DRY-RUN
+
+> **Dry-run NÃO cria nem altera pessoas.** Só lê o export, simula deduplicação/classificação e
+> grava `ImportBatch` + `ImportBatchItem` para análise. Nunca escreve no Prover. O modo `apply`
+> (criação real) **não** está implementado ainda — ver `docs/modules/prover-import-plan.md`.
+
+### Onde colocar o export
+
+O export do Prover é um **ZIP de JSONs**. Coloque-o em `apps/vida-plena-tech/data/` (essa pasta é
+**gitignored** — exports reais contêm dados pessoais e **nunca** devem ser commitados). Esta fase
+usa apenas o `pessoas.json` de dentro do ZIP.
+
+### Comando
+
+```bash
+# precisa do banco no ar + seed (para o tenant existir)
+pnpm prover:dry-run --file ./data/export_prover_2026-06-27.zip
+```
+
+Para um teste rápido sem ZIP, existe um sample **fictício** versionado:
+
+```bash
+pnpm prover:dry-run --file ./samples/prover/pessoas.sample.json
+```
+
+### Exemplo de saída
+
+```
+▶ Lendo export: ./samples/prover/pessoas.sample.json
+  pessoas.json encontrado — 6 registro(s).
+  Tenant: Comunidade Vida Plena (vida-plena)
+  Modo: DRY-RUN — nenhuma pessoa será criada/alterada.
+
+  RELATÓRIO DRY-RUN — Prover Pessoas (Fase 1)
+  Total de registros lidos.................. 6
+  Seriam criados (WOULD_CREATE)............. 5
+  Match por ExternalMapping................. 0
+  Match por CPF............................. 0
+  Possível duplicidade (revisão)............ 0
+  Falhas.................................... 1
+  CPF válido / ausente / inválido / placeholder ... 2 / 3 / 0 / 1
+  Membro sem CPF válido (pendência)......... 1
+  Membro aguardando validação de GC......... 3
+  Papéis pretendidos: GC_LEADER=1 ...
+  ImportBatch criado: <id>  (consulte em /prover)
+```
+
+Os lotes ficam visíveis na tela **/prover** (admin). A classificação granular de cada item
+(`WOULD_CREATE`, `MATCHED_BY_CPF`, `POSSIBLE_DUPLICATE_REVIEW`, …) fica no campo `message` do
+`ImportBatchItem`.
+
+### Testes das funções puras
+
+```bash
+pnpm prover:test     # valida CPF, normalização de status, separação papel/cargo, dedup…
+```
+
+### Próximos passos (modo apply — fora desta rodada)
+
+Criar real de `Person`/contato/endereço + `ExternalMapping` idempotente, papéis pretendidos,
+relatório de conflitos acionável e, depois, as fases de GC/eventos. Detalhe no plano.
+
 ---
 
 ## Telas

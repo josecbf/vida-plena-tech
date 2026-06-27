@@ -23,3 +23,6 @@ next-env.d.ts
 
 # prisma
 /prisma/*.db
+
+# Exports reais do Prover (PII) — NUNCA commitar
+/data/

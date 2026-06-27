@@ -1,7 +1,18 @@
 import { requireContext, assertPermission } from "@/server/context";
 import { prisma } from "@/server/db";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { PageHeader, Badge } from "@/components/ui/misc";
+import {
+  PageHeader,
+  Badge,
+  Empty,
+  Table,
+  THead,
+  TBody,
+  TR,
+  TH,
+  TD,
+} from "@/components/ui/misc";
+import { formatDateTime } from "@/lib/format";
 import { isProverConfigured } from "@/modules/integrations/prover/client";
 
 export default async function ProverPage() {
@@ -9,9 +20,15 @@ export default async function ProverPage() {
   assertPermission(ctx, "prover.import.manage");
 
   const configured = isProverConfigured();
-  const [batches, mappings] = await Promise.all([
+  const [batches, mappings, recentBatches] = await Promise.all([
     prisma.importBatch.count({ where: { tenantId: ctx.tenantId } }),
     prisma.externalMapping.count({ where: { tenantId: ctx.tenantId, system: "PROVER" } }),
+    prisma.importBatch.findMany({
+      where: { tenantId: ctx.tenantId },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+      include: { _count: { select: { items: true } } },
+    }),
   ]);
 
   return (
@@ -53,6 +70,55 @@ export default async function ProverPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card className="mb-4">
+        <CardHeader>
+          <CardTitle>Lotes de importação (dry-run)</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {recentBatches.length === 0 ? (
+            <Empty>
+              Nenhum lote ainda. Rode <code>pnpm prover:dry-run --file &lt;export.zip&gt;</code>.
+            </Empty>
+          ) : (
+            <Table>
+              <THead>
+                <TR>
+                  <TH>Quando</TH>
+                  <TH>Arquivo</TH>
+                  <TH>Status</TH>
+                  <TH>Itens</TH>
+                  <TH>Match</TH>
+                  <TH>Revisão</TH>
+                  <TH>Falhas</TH>
+                </TR>
+              </THead>
+              <TBody>
+                {recentBatches.map((b) => (
+                  <TR key={b.id}>
+                    <TD className="whitespace-nowrap text-xs text-mist">
+                      {formatDateTime(b.createdAt)}
+                    </TD>
+                    <TD className="text-sm">{b.fileName ?? "—"}</TD>
+                    <TD>
+                      <Badge variant={b.status === "COMPLETED" ? "success" : b.status === "FAILED" ? "danger" : "muted"}>
+                        {b.status}
+                      </Badge>
+                    </TD>
+                    <TD className="text-sm">{b._count.items}</TD>
+                    <TD className="text-sm">{b.matched}</TD>
+                    <TD className="text-sm">{b.skipped}</TD>
+                    <TD className="text-sm">{b.failed}</TD>
+                  </TR>
+                ))}
+              </TBody>
+            </Table>
+          )}
+          <p className="mt-3 text-xs text-mist">
+            Dry-run não cria pessoas. Os lotes guardam só a análise (ImportBatch + ImportBatchItem).
+          </p>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

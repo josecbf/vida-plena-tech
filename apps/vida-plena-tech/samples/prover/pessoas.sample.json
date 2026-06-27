@@ -1,0 +1,8 @@
+[
+  { "pessoa_uuid": "uuid-001", "pessoa_nome": "Joana Pereira", "pessoa_tipo": "Visitante", "pessoa_email": "joana@example.com", "pessoa_celular": "11990000001" },
+  { "pessoa_uuid": "uuid-002", "pessoa_nome": "Marcos Andrade", "pessoa_subtipo": "MEMBRO", "pessoa_cpf": "529.982.247-25", "pessoa_nascimento": "1985-03-12", "pessoa_sexo": "Masculino", "estadocivil": "Casado" },
+  { "pessoa_uuid": "uuid-003", "pessoa_nome": "Clara Nunes", "pessoa_subtipo": "MEMBRO", "pessoa_cpf": "00000000000" },
+  { "pessoa_uuid": "uuid-004", "pessoa_nome": "Paulo Lider", "pessoa_subtipo": "LIDER GC", "pessoa_cpf": "111.444.777-35" },
+  { "pessoa_uuid": "uuid-005", "pessoa_nome": "Ana Sem Cpf", "pessoa_tipo": "Visitante", "pessoa_celular": "11990000005", "pessoa_status": "INATIVO" },
+  { "pessoa_uuid": "uuid-006", "pessoa_nome": "Registro Sem Nome Teste", "pessoa_nome": "", "pessoa_tipo": "Visitante" }
+]
