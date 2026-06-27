@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import AdmZip from "adm-zip";
 import type { ProverPerson } from "./types";
@@ -13,6 +14,7 @@ import type { ProverPerson } from "./types";
 
 export interface LoadedPessoas {
   fileName: string;
+  sourceFileHash: string; // sha256 do pessoas.json (rastreabilidade/idempotência)
   pessoas: ProverPerson[];
 }
 
@@ -73,5 +75,6 @@ export function loadProverPessoas(filePath: string): LoadedPessoas {
     );
   }
 
-  return { fileName, pessoas: pessoas as ProverPerson[] };
+  const sourceFileHash = createHash("sha256").update(jsonText).digest("hex");
+  return { fileName, sourceFileHash, pessoas: pessoas as ProverPerson[] };
 }

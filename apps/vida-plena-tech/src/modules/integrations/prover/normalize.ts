@@ -52,12 +52,33 @@ export interface NormalizedProverPerson {
     | null;
   email: string | null;
   phone: string | null; // pessoa_celular → WHATSAPP
+  address: {
+    street: string | null;
+    number: string | null;
+    district: string | null;
+    city: string | null;
+    state: string | null;
+    zipCode: string | null;
+  } | null;
+  isBaptized: boolean; // de ocorrencias (token "BATISMO"); data desconhecida
+  hasTD: boolean; // de ocorrencias (token "TD")
   candidateStatus: EclStatus;
   /** false nesta fase: GC ainda não é importado, então não dá p/ confirmar membro */
   canBecomeMemberNow: boolean;
   intendedRoles: IntendedRole[];
   pendencies: PendencyCode[];
   warnings: string[];
+}
+
+/**
+ * Status que o APPLY pode persistir com segurança: candidato a MEMBER sem GC
+ * validado NÃO vira membro oficial — cai para REGULAR_ATTENDER (regra Fase 1B).
+ */
+export function appliedStatus(n: NormalizedProverPerson): EclStatus {
+  if (n.candidateStatus === "MEMBER" && !n.canBecomeMemberNow) {
+    return "REGULAR_ATTENDER";
+  }
+  return n.candidateStatus;
 }
 
 // ── helpers de string ───────────────────────────────────────────────────
@@ -200,6 +221,13 @@ export function normalizeProverPerson(raw: ProverPerson): NormalizedProverPerson
   const cpf = classifyCpf(raw.pessoa_cpf);
   const intendedRoles: IntendedRole[] = [];
 
+  // CPF problemático vira warning estruturado (tratado como ausente).
+  if (cpf.class === "PLACEHOLDER") {
+    warnings.push("CPF placeholder/sequência repetida — tratado como ausente.");
+  } else if (cpf.class === "INVALID") {
+    warnings.push("CPF inválido (dígitos verificadores) — tratado como ausente.");
+  }
+
   // --- status eclesiástico (a partir de tipo/subtipo/status) ---
   const tipoK = labelKey(raw.pessoa_tipo);
   const subtipoK = labelKey(raw.pessoa_subtipo);
@@ -248,6 +276,24 @@ export function normalizeProverPerson(raw: ProverPerson): NormalizedProverPerson
     }
   }
 
+  // --- endereço (campos confirmados no export real) ---
+  const addr = {
+    street: raw.endereco_logradouro?.trim() || null,
+    number: raw.endereco_numero?.trim() || null,
+    district: raw.endereco_bairro?.trim() || null,
+    city: raw.endereco_cidade?.trim() || null,
+    state: raw.endereco_estado?.trim() || null,
+    zipCode: raw.endereco_cep?.trim() || null,
+  };
+  const address = Object.values(addr).some((v) => v) ? addr : null;
+
+  // --- batismo / TD a partir de ocorrencias (tokens exatos, alta confiança) ---
+  const ocorrencias = (raw.ocorrencias ?? "")
+    .split(",")
+    .map((t) => labelKey(t));
+  const isBaptized = ocorrencias.includes("BATISMO");
+  const hasTD = ocorrencias.includes("TD");
+
   return {
     externalId: raw.pessoa_uuid,
     fullName,
@@ -258,6 +304,9 @@ export function normalizeProverPerson(raw: ProverPerson): NormalizedProverPerson
     maritalStatus: mapMarital(raw.estadocivil),
     email: raw.pessoa_email?.trim() || null,
     phone: raw.pessoa_celular?.trim() || null,
+    address,
+    isBaptized,
+    hasTD,
     candidateStatus,
     canBecomeMemberNow,
     intendedRoles,

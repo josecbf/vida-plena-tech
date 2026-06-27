@@ -16,6 +16,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
     "prover:dry-run": "tsx scripts/prover-dry-run.ts",
+    "prover:apply": "tsx scripts/prover-apply.ts",
     "prover:test": "tsx scripts/prover-test.ts"
   },
   "prisma": {

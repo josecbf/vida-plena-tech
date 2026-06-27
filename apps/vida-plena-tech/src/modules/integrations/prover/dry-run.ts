@@ -10,12 +10,11 @@ import {
 // IMPORTADOR Prover — FASE 1 (Pessoas) — MODO DRY-RUN
 //
 // NÃO cria/atualiza Person, contato, endereço, role, timeline nem audit de
-// pessoa. SÓ grava ImportBatch + ImportBatchItem e devolve o relatório.
-// Dedup é SIMULADA (apenas leitura). Sem merge automático. Sem modo apply.
+// pessoa. SÓ grava ImportBatch + ImportBatchItem (estruturados) e devolve o
+// relatório. Dedup SIMULADA (somente leitura). Sem merge automático. Sem apply.
 //
-// O schema de ImportBatchItem é "coarse" (PENDING/MATCHED/SKIPPED/FAILED).
-// A classificação granular do dry-run vai em `message` (codificada). Ver a
-// pendência "enriquecer schema de import" em docs/modules/prover-import-plan.md.
+// Os campos estruturados (operation/matchStrategy/severity/normalizedJson/
+// warningsJson/errorsJson) são a FONTE DA VERDADE; `message` é só resumo legível.
 // ─────────────────────────────────────────────────────────────────────────
 
 export type ItemClassification =
@@ -26,6 +25,24 @@ export type ItemClassification =
   | "SKIPPED"
   | "FAILED";
 
+// Strings batem com os enums Prisma (ImportOperation/MatchStrategy/ImportSeverity).
+type Operation = "WOULD_CREATE" | "WOULD_UPDATE" | "WOULD_SKIP" | "MATCHED" | "FAILED";
+type Strategy = "EXTERNAL_MAPPING" | "CPF" | "NAME_CONTACT_BIRTHDATE" | "NONE";
+type Severity = "INFO" | "WARNING" | "CONFLICT" | "ERROR";
+type CoarseStatus = "PENDING" | "MATCHED" | "SKIPPED" | "FAILED";
+
+export interface ItemFields {
+  operation: Operation;
+  matchStrategy: Strategy;
+  severity: Severity;
+  coarseStatus: CoarseStatus;
+  externalType: string;
+  targetType: string;
+  message: string;
+  warningsJson: { pendencies: string[]; warnings: string[] };
+  errorsJson: string[];
+}
+
 export interface DryRunReport {
   batchId: string;
   fileName: string;
@@ -34,6 +51,8 @@ export interface DryRunReport {
   matchedByExternalMapping: number;
   matchedByCpf: number;
   possibleDuplicate: number;
+  warnings: number;
+  conflicts: number;
   cpf: { valid: number; missing: number; invalid: number; placeholder: number };
   memberMissingValidCpf: number;
   memberAwaitingGc: number;
@@ -41,29 +60,79 @@ export interface DryRunReport {
   failed: number;
 }
 
-const COARSE: Record<ItemClassification, "PENDING" | "MATCHED" | "SKIPPED" | "FAILED"> = {
-  WOULD_CREATE: "PENDING", // dry-run: nada é criado
-  MATCHED_BY_EXTERNAL_MAPPING: "MATCHED",
-  MATCHED_BY_CPF: "MATCHED",
-  POSSIBLE_DUPLICATE_REVIEW: "SKIPPED",
-  SKIPPED: "SKIPPED",
-  FAILED: "FAILED",
-};
-
-function buildMessage(
-  cls: ItemClassification,
+/**
+ * PURA: deriva os campos estruturados do item a partir da pessoa normalizada,
+ * da classificação de dedup e de erros estruturais. Testável sem DB.
+ */
+export function deriveItemFields(
   n: NormalizedProverPerson,
-): string {
-  const roles = n.intendedRoles.length ? n.intendedRoles.join(",") : "-";
-  const pend = n.pendencies.length ? n.pendencies.join(",") : "-";
-  return [
+  cls: ItemClassification,
+  errors: string[] = [],
+): ItemFields {
+  let operation: Operation;
+  let matchStrategy: Strategy;
+  let coarseStatus: CoarseStatus;
+
+  switch (cls) {
+    case "MATCHED_BY_EXTERNAL_MAPPING":
+      operation = "MATCHED";
+      matchStrategy = "EXTERNAL_MAPPING";
+      coarseStatus = "MATCHED";
+      break;
+    case "MATCHED_BY_CPF":
+      operation = "MATCHED";
+      matchStrategy = "CPF";
+      coarseStatus = "MATCHED";
+      break;
+    case "POSSIBLE_DUPLICATE_REVIEW":
+      operation = "WOULD_SKIP";
+      matchStrategy = "NAME_CONTACT_BIRTHDATE";
+      coarseStatus = "SKIPPED";
+      break;
+    case "FAILED":
+      operation = "FAILED";
+      matchStrategy = "NONE";
+      coarseStatus = "FAILED";
+      break;
+    case "SKIPPED":
+      operation = "WOULD_SKIP";
+      matchStrategy = "NONE";
+      coarseStatus = "SKIPPED";
+      break;
+    default: // WOULD_CREATE
+      operation = "WOULD_CREATE";
+      matchStrategy = "NONE";
+      coarseStatus = "PENDING";
+  }
+
+  let severity: Severity;
+  if (cls === "FAILED") severity = "ERROR";
+  else if (cls === "POSSIBLE_DUPLICATE_REVIEW") severity = "CONFLICT";
+  else if (n.warnings.length > 0 || n.pendencies.length > 0) severity = "WARNING";
+  else severity = "INFO";
+
+  const message = [
     `[${cls}]`,
+    `op=${operation}`,
+    `match=${matchStrategy}`,
+    `sev=${severity}`,
     `status=${n.candidateStatus}`,
     `cpf=${n.cpf.class}`,
-    `roles=${roles}`,
-    `pend=${pend}`,
-    `warns=${n.warnings.length}`,
+    `roles=${n.intendedRoles.join(",") || "-"}`,
+    `pend=${n.pendencies.join(",") || "-"}`,
   ].join(" ");
+
+  return {
+    operation,
+    matchStrategy,
+    severity,
+    coarseStatus,
+    externalType: "person",
+    targetType: "Person",
+    message,
+    warningsJson: { pendencies: n.pendencies, warnings: n.warnings },
+    errorsJson: errors,
+  };
 }
 
 /**
@@ -71,9 +140,14 @@ function buildMessage(
  */
 export async function runPessoasDryRun(
   prisma: PrismaClient,
-  opts: { tenantId: string; fileName: string; pessoas: ProverPerson[] },
+  opts: {
+    tenantId: string;
+    fileName: string;
+    pessoas: ProverPerson[];
+    sourceFileHash?: string;
+  },
 ): Promise<DryRunReport> {
-  const { tenantId, fileName, pessoas } = opts;
+  const { tenantId, fileName, pessoas, sourceFileHash } = opts;
 
   const report: DryRunReport = {
     batchId: "",
@@ -83,6 +157,8 @@ export async function runPessoasDryRun(
     matchedByExternalMapping: 0,
     matchedByCpf: 0,
     possibleDuplicate: 0,
+    warnings: 0,
+    conflicts: 0,
     cpf: { valid: 0, missing: 0, invalid: 0, placeholder: 0 },
     memberMissingValidCpf: 0,
     memberAwaitingGc: 0,
@@ -96,13 +172,14 @@ export async function runPessoasDryRun(
     failed: 0,
   };
 
-  // 1) cria o ImportBatch (status PROCESSING)
   const batch = await prisma.importBatch.create({
     data: {
       tenantId,
+      mode: "DRY_RUN",
       system: "PROVER",
       status: "PROCESSING",
-      fileName, // este lote é DRY-RUN (modo apply ainda não existe — ver pendência)
+      fileName,
+      sourceFileHash: sourceFileHash ?? null,
       total: pessoas.length,
     },
   });
@@ -113,54 +190,70 @@ export async function runPessoasDryRun(
     try {
       const n = normalizeProverPerson(raw);
       const externalId = n.externalId?.trim() || `NO_UUID:${i}`;
-      if (!n.externalId?.trim()) {
-        n.warnings.push("registro sem pessoa_uuid (fallback gerado).");
-      }
+      if (!n.externalId?.trim()) n.warnings.push("registro sem pessoa_uuid (fallback gerado).");
 
       // contadores de CPF
       report.cpf[
         n.cpf.class.toLowerCase() as "valid" | "missing" | "invalid" | "placeholder"
       ]++;
-
-      // contadores de pendência/papel
       if (n.pendencies.includes("MEMBER_MISSING_VALID_CPF")) report.memberMissingValidCpf++;
       if (n.pendencies.includes("MEMBER_REQUIRES_GC_CONFIRMATION")) report.memberAwaitingGc++;
       for (const role of n.intendedRoles) report.intendedRoles[role]++;
 
+      const errors: string[] = [];
       let cls: ItemClassification;
+      let targetId: string | null = null;
 
       if (!n.fullName) {
-        // registro sem nome não é importável
         cls = "FAILED";
-        n.warnings.push("registro sem pessoa_nome.");
+        errors.push("registro sem pessoa_nome.");
         report.failed++;
       } else {
-        cls = await classify(prisma, tenantId, n);
+        const r = await classify(prisma, tenantId, n);
+        cls = r.cls;
+        targetId = r.targetId;
         if (cls === "WOULD_CREATE") report.wouldCreate++;
         else if (cls === "MATCHED_BY_EXTERNAL_MAPPING") report.matchedByExternalMapping++;
         else if (cls === "MATCHED_BY_CPF") report.matchedByCpf++;
         else if (cls === "POSSIBLE_DUPLICATE_REVIEW") report.possibleDuplicate++;
       }
 
+      const fields = deriveItemFields(n, cls, errors);
+      if (fields.severity === "WARNING") report.warnings++;
+      else if (fields.severity === "CONFLICT") report.conflicts++;
+
       await prisma.importBatchItem.create({
         data: {
           tenantId,
           batchId: batch.id,
+          externalType: fields.externalType,
           externalId,
+          operation: fields.operation,
+          matchStrategy: fields.matchStrategy,
+          severity: fields.severity,
+          targetType: fields.targetType,
+          targetId,
+          normalizedJson: n as object,
+          warningsJson: fields.warningsJson,
+          errorsJson: fields.errorsJson,
           rawJson: raw as object,
-          status: COARSE[cls],
-          message: buildMessage(cls, n),
+          status: fields.coarseStatus,
+          message: fields.message,
         },
       });
     } catch (err) {
-      // erro inesperado no item: registra FAILED, não derruba o lote
       report.failed++;
       await prisma.importBatchItem.create({
         data: {
           tenantId,
           batchId: batch.id,
+          externalType: "person",
           externalId: (raw as ProverPerson)?.pessoa_uuid ?? `NO_UUID:${i}`,
+          operation: "FAILED",
+          matchStrategy: "NONE",
+          severity: "ERROR",
           rawJson: (raw as object) ?? {},
+          errorsJson: [err instanceof Error ? err.message : "erro desconhecido"],
           status: "FAILED",
           message: `[FAILED] ${err instanceof Error ? err.message : "erro desconhecido"}`,
         },
@@ -168,15 +261,16 @@ export async function runPessoasDryRun(
     }
   }
 
-  // 2) fecha o ImportBatch
   await prisma.importBatch.update({
     where: { id: batch.id },
     data: {
-      status: "COMPLETED", // erro estrutural (sem pessoas.json/JSON inválido) falha antes daqui
+      status: "COMPLETED", // erro estrutural (sem pessoas.json / JSON inválido) falha antes daqui
       created: 0, // dry-run: nada criado
       matched: report.matchedByExternalMapping + report.matchedByCpf,
       skipped: report.possibleDuplicate,
       failed: report.failed,
+      warnings: report.warnings,
+      conflicts: report.conflicts,
       finishedAt: new Date(),
     },
   });
@@ -184,24 +278,19 @@ export async function runPessoasDryRun(
   return report;
 }
 
-/** Deduplicação SIMULADA (somente leitura). Sem merge automático. */
+/** Deduplicação SIMULADA (somente leitura). Devolve a estratégia e o alvo. */
 async function classify(
   prisma: PrismaClient,
   tenantId: string,
   n: NormalizedProverPerson,
-): Promise<ItemClassification> {
+): Promise<{ cls: ItemClassification; targetId: string | null }> {
   // 1) ExternalMapping (idempotência)
   if (n.externalId?.trim()) {
     const mapped = await prisma.externalMapping.findFirst({
-      where: {
-        tenantId,
-        system: "PROVER",
-        externalType: "person",
-        externalId: n.externalId,
-      },
-      select: { id: true },
+      where: { tenantId, system: "PROVER", externalType: "person", externalId: n.externalId },
+      select: { internalId: true },
     });
-    if (mapped) return "MATCHED_BY_EXTERNAL_MAPPING";
+    if (mapped) return { cls: "MATCHED_BY_EXTERNAL_MAPPING", targetId: mapped.internalId };
   }
 
   // 2) CPF válido → match por CPF
@@ -210,7 +299,7 @@ async function classify(
       where: { tenantId, cpf: n.cpf.clean },
       select: { id: true },
     });
-    if (byCpf) return "MATCHED_BY_CPF";
+    if (byCpf) return { cls: "MATCHED_BY_CPF", targetId: byCpf.id };
   }
 
   // 3) sem CPF válido → possível duplicidade por nome + contato (+ nascimento)
@@ -226,10 +315,9 @@ async function classify(
         },
         select: { id: true },
       });
-      if (possible) return "POSSIBLE_DUPLICATE_REVIEW";
+      if (possible) return { cls: "POSSIBLE_DUPLICATE_REVIEW", targetId: possible.id };
     }
   }
 
-  // 4) nada encontrado → seria criado
-  return "WOULD_CREATE";
+  return { cls: "WOULD_CREATE", targetId: null };
 }

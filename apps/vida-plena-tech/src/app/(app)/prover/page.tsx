@@ -85,12 +85,15 @@ export default async function ProverPage() {
               <THead>
                 <TR>
                   <TH>Quando</TH>
-                  <TH>Arquivo</TH>
-                  <TH>Status</TH>
-                  <TH>Itens</TH>
+                  <TH>Modo</TH>
+                  <TH>Fonte</TH>
+                  <TH>Total</TH>
+                  <TH>Criados</TH>
                   <TH>Match</TH>
-                  <TH>Revisão</TH>
+                  <TH>Warn</TH>
+                  <TH>Conflito</TH>
                   <TH>Falhas</TH>
+                  <TH>Status</TH>
                 </TR>
               </THead>
               <TBody>
@@ -99,16 +102,21 @@ export default async function ProverPage() {
                     <TD className="whitespace-nowrap text-xs text-mist">
                       {formatDateTime(b.createdAt)}
                     </TD>
-                    <TD className="text-sm">{b.fileName ?? "—"}</TD>
+                    <TD>
+                      <Badge variant={b.mode === "APPLY" ? "default" : "outline"}>{b.mode}</Badge>
+                    </TD>
+                    <TD className="text-sm">{b.system}</TD>
+                    <TD className="text-sm">{b._count.items}</TD>
+                    <TD className="text-sm">{b.created}</TD>
+                    <TD className="text-sm">{b.matched}</TD>
+                    <TD className="text-sm">{b.warnings}</TD>
+                    <TD className="text-sm">{b.conflicts}</TD>
+                    <TD className="text-sm">{b.failed}</TD>
                     <TD>
                       <Badge variant={b.status === "COMPLETED" ? "success" : b.status === "FAILED" ? "danger" : "muted"}>
                         {b.status}
                       </Badge>
                     </TD>
-                    <TD className="text-sm">{b._count.items}</TD>
-                    <TD className="text-sm">{b.matched}</TD>
-                    <TD className="text-sm">{b.skipped}</TD>
-                    <TD className="text-sm">{b.failed}</TD>
                   </TR>
                 ))}
               </TBody>

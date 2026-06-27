@@ -138,6 +138,7 @@ enum TimelineEntryType {
   PASTORAL_NOTE
   CONSENT
   COURSE_COMPLETION // futuro (Ensino/EAD) — já reservado
+  IMPORTED_FROM_PROVER // criação/atualização via importador Prover
 }
 
 enum Sensitivity {
@@ -173,6 +174,38 @@ enum ImportItemStatus {
   MATCHED
   SKIPPED
   FAILED
+}
+
+// Endurecimento do import (dry-run/apply estruturado).
+enum ImportMode {
+  DRY_RUN
+  APPLY
+}
+
+enum ImportOperation {
+  WOULD_CREATE
+  WOULD_UPDATE
+  WOULD_SKIP
+  MATCHED
+  FAILED
+  // valores reais do APPLY
+  CREATE
+  UPDATE
+  SKIP
+}
+
+enum MatchStrategy {
+  EXTERNAL_MAPPING
+  CPF
+  NAME_CONTACT_BIRTHDATE
+  NONE
+}
+
+enum ImportSeverity {
+  INFO
+  WARNING
+  CONFLICT
+  ERROR
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -740,15 +773,20 @@ model ExternalMapping {
 model ImportBatch {
   id        String       @id @default(cuid())
   tenantId  String
-  system    String       @default("PROVER")
+  mode      ImportMode   @default(DRY_RUN)
+  system    String       @default("PROVER") // = source
   status    ImportStatus @default(PENDING)
-  fileName  String?
-  total     Int          @default(0)
-  created   Int          @default(0)
-  matched   Int          @default(0)
-  skipped   Int          @default(0)
-  failed    Int          @default(0)
-  createdAt DateTime     @default(now())
+  fileName  String? // = sourceFileName
+  sourceFileHash String?
+  // Contadores estruturados (total/created/matched/skipped/failed reaproveitados)
+  total     Int          @default(0) // totalItems
+  created   Int          @default(0) // createdItems
+  matched   Int          @default(0) // matchedItems
+  skipped   Int          @default(0) // skippedItems
+  failed    Int          @default(0) // failedItems
+  warnings  Int          @default(0) // warningItems
+  conflicts Int          @default(0) // conflictItems
+  createdAt DateTime     @default(now()) // = startedAt
   finishedAt DateTime?
 
   tenant Tenant            @relation(fields: [tenantId], references: [id])
@@ -758,14 +796,24 @@ model ImportBatch {
 }
 
 model ImportBatchItem {
-  id         String           @id @default(cuid())
-  tenantId   String
-  batchId    String
-  externalId String?
-  rawJson    Json
-  status     ImportItemStatus @default(PENDING)
-  message    String?
-  createdAt  DateTime         @default(now())
+  id           String           @id @default(cuid())
+  tenantId     String
+  batchId      String
+  externalType String? // ex.: "person"
+  externalId   String?
+  // Campos estruturados (message vira resumo legível, não fonte da verdade)
+  operation     ImportOperation?
+  matchStrategy MatchStrategy?
+  severity      ImportSeverity?
+  targetType    String? // ex.: "Person"
+  targetId      String? // id interno quando há match (dry-run não cria)
+  normalizedJson Json?
+  warningsJson   Json?
+  errorsJson     Json?
+  rawJson      Json
+  status       ImportItemStatus @default(PENDING)
+  message      String?
+  createdAt    DateTime         @default(now())
 
   batch ImportBatch @relation(fields: [batchId], references: [id])
 

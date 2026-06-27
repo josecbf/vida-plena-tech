@@ -73,6 +73,7 @@ export const TIMELINE_LABEL: Record<TimelineEntryType, string> = {
   PASTORAL_NOTE: "Observação pastoral",
   CONSENT: "Consentimento",
   COURSE_COMPLETION: "Curso concluído",
+  IMPORTED_FROM_PROVER: "Importado do Prover",
 };
 
 export function statusBadgeVariant(

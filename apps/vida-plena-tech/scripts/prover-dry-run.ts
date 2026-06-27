@@ -49,8 +49,9 @@ async function main() {
 
     // 2) carrega pessoas.json do ZIP
     console.log(`\n▶ Lendo export: ${args.file}`);
-    const { fileName, pessoas } = loadProverPessoas(args.file);
+    const { fileName, sourceFileHash, pessoas } = loadProverPessoas(args.file);
     console.log(`  pessoas.json encontrado — ${pessoas.length} registro(s).`);
+    console.log(`  sha256(pessoas.json): ${sourceFileHash.slice(0, 16)}…`);
     console.log(`  Tenant: ${tenant.name} (${tenant.slug})`);
     console.log(`  Modo: DRY-RUN — nenhuma pessoa será criada/alterada.\n`);
 
@@ -59,6 +60,7 @@ async function main() {
       tenantId: tenant.id,
       fileName,
       pessoas,
+      sourceFileHash,
     });
 
     // 4) relatório
@@ -72,6 +74,8 @@ async function main() {
     console.log(line("Match por ExternalMapping", r.matchedByExternalMapping));
     console.log(line("Match por CPF", r.matchedByCpf));
     console.log(line("Possível duplicidade (revisão)", r.possibleDuplicate));
+    console.log(line("Itens com warning", r.warnings));
+    console.log(line("Itens com conflito", r.conflicts));
     console.log(line("Falhas", r.failed));
     console.log("  " + "-".repeat(52));
     console.log(line("CPF válido", r.cpf.valid));

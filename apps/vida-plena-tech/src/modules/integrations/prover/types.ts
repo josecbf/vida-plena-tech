@@ -28,6 +28,15 @@ export interface ProverPerson {
   pessoa_status?: string; // ATIVO/INATIVO
   pessoa_tipo?: string; // ex.: Visitante — vira status (nunca cru)
   pessoa_subtipo?: string; // ex.: MEMBRO / LIDER GC — status OU papel (nunca cru)
+  // Endereço (nomes confirmados no export real)
+  endereco_logradouro?: string;
+  endereco_numero?: string;
+  endereco_bairro?: string;
+  endereco_cidade?: string;
+  endereco_estado?: string;
+  endereco_cep?: string;
+  // Lista de ocorrências (string CSV: "BATISMO, TD, MEMBRO, ...")
+  ocorrencias?: string;
 }
 
 export interface ProverExportManifest {
