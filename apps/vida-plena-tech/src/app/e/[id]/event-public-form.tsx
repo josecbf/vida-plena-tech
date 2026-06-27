@@ -19,6 +19,7 @@ export function EventPublicForm({ eventId }: { eventId: string }) {
   });
   const [done, setDone] = useState(false);
   const [warning, setWarning] = useState<string | null>(null);
+  const [canForce, setCanForce] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
@@ -29,25 +30,31 @@ export function EventPublicForm({ eventId }: { eventId: string }) {
     setForm((f) => ({ ...f, [k]: v }));
   }
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
+  async function run(allowDuplicate: boolean) {
     setError(null);
     setWarning(null);
     setPending(true);
     try {
-      const r = await registerPublicForEvent(form);
+      const r = await registerPublicForEvent({ ...form, allowDuplicate });
       if (r.ok) {
         setDone(true);
       } else if (r.reason === "POSSIBLE_MATCH") {
         setWarning(r.message);
+        setCanForce(true); // não bloqueia: permite continuar
       } else {
         setError(r.message);
+        setCanForce(false);
       }
     } catch {
       setError("Não foi possível enviar. Tente novamente.");
     } finally {
       setPending(false);
     }
+  }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    await run(false);
   }
 
   if (done) {
@@ -91,6 +98,18 @@ export function EventPublicForm({ eventId }: { eventId: string }) {
       <Button type="submit" className="w-full" disabled={pending}>
         {pending ? "Enviando…" : "Confirmar inscrição"}
       </Button>
+
+      {canForce ? (
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full"
+          disabled={pending}
+          onClick={() => run(true)}
+        >
+          Continuar mesmo assim
+        </Button>
+      ) : null}
     </form>
   );
 }

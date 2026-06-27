@@ -12,16 +12,22 @@
 // O Prover virá como ZIP de JSONs; o importador real leria esses arquivos.
 // ─────────────────────────────────────────────────────────────────────────
 
-/** Forma (parcial) de uma pessoa exportada do Prover. */
+/**
+ * Forma (parcial) de uma pessoa em `pessoas.json` (nomes reais do export).
+ * Ver mapeamento completo em docs/modules/prover-import-plan.md (§2).
+ */
 export interface ProverPerson {
-  id: string; // id externo (vira ExternalMapping.externalId)
-  nome: string;
-  cpf?: string;
-  email?: string;
-  telefone?: string;
-  nascimento?: string;
-  // status do Prover é mapeado para EclesiasticalStatus + RoleKey na importação
-  status?: string;
+  pessoa_uuid: string; // vira ExternalMapping.externalId (externalType="person")
+  pessoa_nome: string;
+  pessoa_cpf?: string; // só grava se válido (ver isImportableCpf)
+  pessoa_nascimento?: string;
+  pessoa_sexo?: string;
+  estadocivil?: string;
+  pessoa_email?: string;
+  pessoa_celular?: string;
+  pessoa_status?: string; // ATIVO/INATIVO
+  pessoa_tipo?: string; // ex.: Visitante — vira status (nunca cru)
+  pessoa_subtipo?: string; // ex.: MEMBRO / LIDER GC — status OU papel (nunca cru)
 }
 
 export interface ProverExportManifest {
@@ -29,12 +35,39 @@ export interface ProverExportManifest {
   counts: { people: number };
 }
 
-/** Mapa status do Prover → status eclesiástico canônico (ver schema). */
+/**
+ * Mapa de SITUAÇÃO Prover → status eclesiástico canônico.
+ * NÃO inclui cargos (líder/supervisor/pastor) — esses são papéis (ver abaixo).
+ */
 export const PROVER_STATUS_MAP: Record<string, string> = {
   visitante: "VISITOR",
   membro: "MEMBER",
   transferido: "TRANSFERRED",
   excluido: "ARCHIVED",
   inativo: "INACTIVE",
-  // líder / supervisor / coordenador / pastor são CARGOS (RoleKey), não status.
 };
+
+/**
+ * Mapa de CARGO Prover → papel (RoleAssignment.role). Cargo NUNCA vira status.
+ * Chaves normalizadas em MAIÚSCULAS sem acento.
+ */
+export const PROVER_ROLE_MAP: Record<string, string> = {
+  "LIDER GC": "GC_LEADER",
+  SUPERVISOR: "SUPERVISOR",
+  "COORDENADOR": "COORDINATOR",
+  "COORDENADORA": "COORDINATOR",
+  "PASTOR DE AREA": "AREA_PASTOR",
+  "PASTOR SENIOR": "SENIOR_PASTOR",
+};
+
+/**
+ * CPF importável? Trata zerado/sequência/placeholder/vazio como AUSENTE.
+ * (A validação de dígitos fica com lib/format.ts:isValidCpf na importação real.)
+ */
+export function isImportableCpf(raw?: string | null): boolean {
+  if (!raw) return false;
+  const d = raw.replace(/\D/g, "");
+  if (d.length !== 11) return false;
+  if (/^(\d)\1{10}$/.test(d)) return false; // 00000000000, 11111111111, …
+  return true; // dígitos verificadores conferidos por isValidCpf na importação
+}

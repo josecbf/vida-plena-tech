@@ -36,8 +36,17 @@ export default async function EditPersonPage({
   const toDateInput = (d: Date | null) =>
     d ? d.toISOString().slice(0, 10) : "";
 
-  // Não vaza CPF para quem não pode vê-lo completo (campo fica restrito).
+  // CPF (P1.2):
+  //  • view_full → vê e edita.
+  //  • capture   → só pode preencher quando a pessoa AINDA NÃO tem CPF.
+  // Não vaza o número para quem não tem view_full (campo só recebe o valor real
+  // quando o usuário pode vê-lo).
   const canFullCpf = can(ctx, "people.cpf.view_full");
+  const canCaptureEmpty = can(ctx, "people.cpf.capture") && !person.cpf;
+  const cpfEditable = canFullCpf || canCaptureEmpty;
+  const cpfLockedHint = person.cpf
+    ? "Esta pessoa já tem CPF. Apenas administradores podem alterá-lo."
+    : "Você não tem permissão para informar o CPF.";
 
   return (
     <div>
@@ -45,7 +54,8 @@ export default async function EditPersonPage({
       <PersonForm
         mode="edit"
         personId={person.id}
-        canSeeFullCpf={can(ctx, "people.cpf.view_full")}
+        cpfEditable={cpfEditable}
+        cpfLockedHint={cpfLockedHint}
         campuses={await prisma.campus.findMany({
           where: { tenantId: ctx.tenantId, archivedAt: null },
           orderBy: { name: "asc" },

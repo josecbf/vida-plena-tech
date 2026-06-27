@@ -11,10 +11,13 @@ interface Props {
   personId?: string;
   campuses: { id: string; name: string }[];
   initial?: Partial<PersonFormInput>;
-  canSeeFullCpf: boolean;
+  /** Campo CPF editável: admin (view_full) OU liderança capturando CPF ausente. */
+  cpfEditable: boolean;
+  /** Mensagem do motivo de o CPF estar bloqueado (quando !cpfEditable). */
+  cpfLockedHint?: string;
 }
 
-export function PersonForm({ mode, personId, campuses, initial, canSeeFullCpf }: Props) {
+export function PersonForm({ mode, personId, campuses, initial, cpfEditable, cpfLockedHint }: Props) {
   const router = useRouter();
   const [form, setForm] = useState<PersonFormInput>({
     fullName: initial?.fullName ?? "",
@@ -81,16 +84,16 @@ export function PersonForm({ mode, personId, campuses, initial, canSeeFullCpf }:
         <Field
           label="CPF"
           hint={
-            canSeeFullCpf
+            cpfEditable
               ? "Opcional para visitante; obrigatório para virar membro. Único por igreja."
-              : "Apenas administradores veem o CPF completo."
+              : (cpfLockedHint ?? "CPF restrito — você não pode alterá-lo.")
           }
         >
           <Input
             value={form.cpf}
             onChange={(e) => set("cpf", e.target.value)}
-            placeholder={canSeeFullCpf ? "000.000.000-00" : "(restrito)"}
-            disabled={!canSeeFullCpf}
+            placeholder={cpfEditable ? "000.000.000-00" : "(restrito)"}
+            disabled={!cpfEditable}
           />
         </Field>
         <Field label="Data de nascimento" hint="Menores de idade podem se cadastrar.">

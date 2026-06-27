@@ -18,7 +18,11 @@ export default async function NewPersonPage() {
         title="Nova pessoa"
         description="Toda pessoa entra como Visitante. A promoção a Membro exige GC + CPF."
       />
-      <PersonForm mode="create" campuses={campuses} canSeeFullCpf={can(ctx, "people.cpf.view_full")} />
+      <PersonForm
+        mode="create"
+        campuses={campuses}
+        cpfEditable={can(ctx, "people.cpf.view_full") || can(ctx, "people.cpf.capture")}
+      />
     </div>
   );
 }

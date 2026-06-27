@@ -24,6 +24,8 @@ export interface PublicRegistrationInput {
   birthDate?: string;
   cpf?: string;
   gcToken?: string;
+  /** Usuário confirmou "Continuar mesmo assim" após aviso de possível duplicidade. */
+  allowDuplicate?: boolean;
 }
 
 export type PublicRegistrationResult =
@@ -76,7 +78,9 @@ export async function registerPublicPerson(
     }
   }
 
-  // Sugestão por nome + contato (não bloqueia — apenas avisa)
+  // Sugestão por nome + contato: NÃO bloqueia — apenas avisa. O usuário pode
+  // confirmar "Continuar mesmo assim" (allowDuplicate) e o cadastro é criado.
+  let forcedDespiteMatch = false;
   if (!cpf) {
     const contactValues = [input.email, input.phone, input.whatsapp]
       .filter(Boolean)
@@ -91,12 +95,15 @@ export async function registerPublicPerson(
         select: { id: true },
       });
       if (possible) {
-        return {
-          ok: false,
-          reason: "POSSIBLE_MATCH",
-          message:
-            "Encontramos um possível cadastro com seu nome e contato. Confirme com a secretaria para evitar duplicidade.",
-        };
+        if (!input.allowDuplicate) {
+          return {
+            ok: false,
+            reason: "POSSIBLE_MATCH",
+            message:
+              "Encontramos um possível cadastro com seu nome e contato. Se for você mesmo, procure a secretaria. Se quiser seguir assim, confirme abaixo.",
+          };
+        }
+        forcedDespiteMatch = true;
       }
     }
   }
@@ -157,7 +164,15 @@ export async function registerPublicPerson(
       entityType: "Person",
       entityId: p.id,
       sensitivity: cpf ? "CONFIDENTIAL" : "INTERNAL",
-      after: { fullName: p.fullName, source: p.source, gcId: gc?.id ?? null },
+      reason: forcedDespiteMatch
+        ? "Cadastro criado apesar de possível duplicidade (confirmado pelo usuário)"
+        : null,
+      after: {
+        fullName: p.fullName,
+        source: p.source,
+        gcId: gc?.id ?? null,
+        forcedDespiteMatch,
+      },
     });
 
     await emitEvent(tx, {

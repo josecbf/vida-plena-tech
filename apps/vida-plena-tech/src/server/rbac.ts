@@ -12,7 +12,8 @@ export type Permission =
   | "people.person.view"
   | "people.person.create"
   | "people.person.edit"
-  | "people.cpf.view_full"
+  | "people.cpf.view_full" // vê e altera CPF completo (admin)
+  | "people.cpf.capture" // preenche CPF quando ausente; não altera existente
   | "people.status.promote"
   | "people.family.manage"
   | "people.timeline_sensitive.view" // notas pastorais — só pastores
@@ -37,6 +38,7 @@ const ALL: Permission[] = [
   "people.person.create",
   "people.person.edit",
   "people.cpf.view_full",
+  "people.cpf.capture",
   "people.status.promote",
   "people.family.manage",
   "people.timeline_sensitive.view",
@@ -71,6 +73,7 @@ const ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
     "people.person.view",
     "people.person.create",
     "people.person.edit", // complemento item 7: edita pessoas do seu GC
+    "people.cpf.capture", // pode preencher CPF ausente; não altera existente
     "people.status.promote", // pode promover visitante→membro
     "people.family.manage",
     "groups.gc.view",
@@ -85,6 +88,7 @@ const ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
   SUPERVISOR: [
     "people.person.view",
     "people.person.edit",
+    "people.cpf.capture", // pode preencher CPF ausente; não altera existente
     "people.status.promote",
     "people.family.manage",
     "groups.gc.view",
@@ -100,6 +104,7 @@ const ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
   COORDINATOR: [
     "people.person.view",
     "people.person.edit",
+    "people.cpf.capture", // pode preencher CPF ausente; não altera existente
     "people.status.promote",
     "people.family.manage",
     "groups.gc.view",
@@ -115,6 +120,7 @@ const ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
   AREA_PASTOR: [
     "people.person.view",
     "people.person.edit",
+    "people.cpf.capture", // pode preencher CPF ausente; não altera existente
     "people.status.promote",
     "people.family.manage",
     "people.timeline_sensitive.view", // ← vê nota pastoral (no escopo)
@@ -133,6 +139,7 @@ const ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
     "people.person.view",
     "people.person.create",
     "people.person.edit",
+    "people.cpf.capture", // pode preencher CPF ausente; não altera existente
     "people.status.promote",
     "people.family.manage",
     "people.timeline_sensitive.view", // ← vê nota pastoral (tenant)

@@ -173,7 +173,11 @@ export async function createPerson(input: PersonFormInput) {
   const ctx = await requireContext();
   assertPermission(ctx, "people.person.create");
 
-  const cpf = normalizeCpf(input.cpf);
+  // Na criação a pessoa ainda não tem CPF, então capturar é permitido por
+  // people.cpf.view_full OU people.cpf.capture. Sem nenhuma, o CPF é ignorado.
+  const canSetCpf =
+    can(ctx, "people.cpf.view_full") || can(ctx, "people.cpf.capture");
+  const cpf = canSetCpf ? normalizeCpf(input.cpf) : null;
   if (cpf) await assertCpfUnique(ctx.tenantId, cpf);
   const baptism = resolveBaptism(input);
 
@@ -258,11 +262,20 @@ export async function updatePerson(personId: string, input: PersonFormInput) {
     where: { id: personId, tenantId: ctx.tenantId },
   });
 
-  // CPF é dado sensível: só quem tem people.cpf.view_full pode alterá-lo.
-  // Para os demais, preservamos o valor existente (nunca apagamos por edição).
-  const canEditCpf = can(ctx, "people.cpf.view_full");
-  const cpf = canEditCpf ? normalizeCpf(input.cpf) : before.cpf;
-  if (canEditCpf && cpf && cpf !== before.cpf) {
+  // CPF é dado sensível. Regras (P1.2):
+  //  • people.cpf.view_full  → vê e ALTERA o CPF (admin).
+  //  • people.cpf.capture    → preenche CPF quando AUSENTE; não altera existente.
+  //  • sem nenhuma das duas   → preserva o valor existente.
+  const canFullCpf = can(ctx, "people.cpf.view_full");
+  const canCaptureCpf = can(ctx, "people.cpf.capture");
+  let cpf = before.cpf;
+  if (canFullCpf) {
+    cpf = normalizeCpf(input.cpf); // pode definir, trocar ou limpar
+  } else if (canCaptureCpf && !before.cpf) {
+    cpf = normalizeCpf(input.cpf); // captura: só quando ainda não há CPF
+  }
+  const cpfChanged = cpf !== before.cpf;
+  if (cpfChanged && cpf) {
     await assertCpfUnique(ctx.tenantId, cpf, personId);
   }
   const baptism = resolveBaptism(input);
@@ -308,13 +321,30 @@ export async function updatePerson(personId: string, input: PersonFormInput) {
       },
     });
 
+    // Auditoria DEDICADA de captura/alteração de CPF (sempre CONFIDENTIAL).
+    if (cpfChanged) {
+      await writeAudit(tx, {
+        tenantId: ctx.tenantId,
+        actorUserId: ctx.userId,
+        actorPersonId: ctx.personId,
+        module: "people",
+        action: before.cpf ? "cpf_changed" : "cpf_captured",
+        entityType: "Person",
+        entityId: personId,
+        sensitivity: "CONFIDENTIAL",
+        reason: canFullCpf ? "Alteração de CPF (view_full)" : "Captura de CPF ausente",
+        // NÃO registrar o número do CPF no log — apenas o fato.
+        after: { hadCpf: !!before.cpf, hasCpf: !!cpf },
+      });
+    }
+
     await emitEvent(tx, {
       tenantId: ctx.tenantId,
       eventType: "person.updated",
       aggregateType: "Person",
       aggregateId: personId,
       actorUserId: ctx.userId,
-      payload: { personId },
+      payload: { personId, cpfChanged },
     });
   });
 

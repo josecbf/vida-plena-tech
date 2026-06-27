@@ -26,6 +26,7 @@ export function RegistrationForm({
   });
   const [done, setDone] = useState<{ name?: string } | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
+  const [canForce, setCanForce] = useState(false); // possível duplicidade → permite continuar
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
@@ -36,25 +37,36 @@ export function RegistrationForm({
     setForm((f) => ({ ...f, [key]: value }));
   }
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
+  async function run(allowDuplicate: boolean) {
     setError(null);
     setWarning(null);
     setPending(true);
     try {
-      const r = await registerPublicPerson(form);
+      const r = await registerPublicPerson({ ...form, allowDuplicate });
       if (r.ok) {
         setDone({ name: r.gcName });
-      } else if (r.reason === "DUPLICATE_CPF" || r.reason === "POSSIBLE_MATCH") {
+      } else if (r.reason === "POSSIBLE_MATCH") {
+        // Não bloqueia: avisa e habilita "Continuar mesmo assim".
         setWarning(r.message);
+        setCanForce(true);
+      } else if (r.reason === "DUPLICATE_CPF") {
+        // Bloqueia (CPF já existe).
+        setWarning(r.message);
+        setCanForce(false);
       } else {
         setError(r.message);
+        setCanForce(false);
       }
     } catch {
       setError("Não foi possível enviar. Tente novamente.");
     } finally {
       setPending(false);
     }
+  }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    await run(false);
   }
 
   if (done) {
@@ -109,6 +121,18 @@ export function RegistrationForm({
       <Button type="submit" className="w-full" disabled={pending}>
         {pending ? "Enviando…" : "Enviar cadastro"}
       </Button>
+
+      {canForce ? (
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full"
+          disabled={pending}
+          onClick={() => run(true)}
+        >
+          Continuar mesmo assim
+        </Button>
+      ) : null}
     </form>
   );
 }
