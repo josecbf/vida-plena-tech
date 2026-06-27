@@ -9,3 +9,27 @@
 # Arquivos temporários
 *.tmp
 *.bak
+~*
+
+# Node / monorepo
+node_modules/
+.pnpm-store/
+.turbo/
+
+# Builds
+.next/
+out/
+dist/
+build/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+
+# Vercel
+.vercel

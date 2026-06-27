@@ -181,7 +181,7 @@ dependências criadas. Se não houver nada especial, escrever "Nenhum."
 
 ## Equipe e habilidades
 
-Ver [`Squads/Equipe-e-Papeis.md`](Squads/Equipe-e-Papeis.md) para descrição detalhada dos papéis, habilidades e estrutura de squads.
+Ver [`docs/Squads/Equipe-e-Papeis.md`](docs/Squads/Equipe-e-Papeis.md) para descrição detalhada dos papéis, habilidades e estrutura de squads. Os agentes de IA por papel ficam em [`agents/`](agents/).
 
 ---
 
@@ -191,10 +191,11 @@ Antes de editar qualquer arquivo abaixo, verificar se há branch aberta de outro
 
 | Arquivo / Pasta | Motivo |
 |---|---|
-| `000 - Hub.md` | Ponto de entrada — afeta a navegação de todos |
-| `PRELIMINARES/` | Visão e princípios — mudanças têm impacto transversal |
-| `Técnico/` | Contratos centrais do sistema |
-| `Produto/` | Estrutura e roadmap do produto |
+| `docs/000 - Hub.md` | Ponto de entrada — afeta a navegação de todos |
+| `docs/PRELIMINARES/` | Visão e princípios — mudanças têm impacto transversal |
+| `docs/Técnico/` | Contratos centrais do sistema |
+| `docs/Produto/` | Estrutura e roadmap do produto |
+| `package.json` / `pnpm-workspace.yaml` / `turbo.json` | Configuração do monorepo |
 | `COLLABORATION.md` | Este arquivo |
 | `AI-INSTRUCTIONS.md` | Instruções para agentes de IA |
 | `AGENTS.md` | Instruções dos agentes externos |

@@ -1,0 +1,27 @@
+# Postgres local para a demo da Vida Plena Tech.
+# Uso:
+#   docker compose up -d
+#   pnpm db:migrate && pnpm db:seed
+#
+# Porta 5433 (e não 5432) para não colidir com um Postgres já instalado na máquina.
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: vidaplena-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: vidaplena
+      POSTGRES_PASSWORD: vidaplena
+      POSTGRES_DB: vidaplena
+    ports:
+      - "5433:5432"
+    volumes:
+      - vidaplena-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vidaplena -d vidaplena"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  vidaplena-pgdata:
