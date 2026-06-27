@@ -7,6 +7,7 @@ import {
   MaritalStatus,
   ContactType,
   FamilyRelationship,
+  Prisma,
 } from "@prisma/client";
 import { prisma } from "@/server/db";
 import {
@@ -38,6 +39,14 @@ export interface PersonFormInput {
   hasTD?: boolean;
   tdDate?: string;
   operationalNotes?: string;
+  // Endereço principal (um por pessoa na demo)
+  street?: string;
+  number?: string;
+  complement?: string;
+  district?: string;
+  city?: string;
+  state?: string;
+  zipCode?: string;
 }
 
 function normalizeCpf(cpf?: string): string | null {
@@ -46,6 +55,101 @@ function normalizeCpf(cpf?: string): string | null {
   if (!d) return null;
   if (!isValidCpf(d)) throw new Error("CPF inválido.");
   return d;
+}
+
+/**
+ * Valida batismo no backend (não confiar só na UI):
+ *  - isBaptized=true  → baptismDate obrigatória;
+ *  - isBaptized=false → baptismDate deve ser nula.
+ * Campos futuros pendentes: igreja, local, pastor/ministro.
+ */
+function resolveBaptism(input: PersonFormInput): {
+  isBaptized: boolean;
+  baptismDate: Date | null;
+} {
+  const isBaptized = !!input.isBaptized;
+  if (isBaptized) {
+    if (!input.baptismDate) {
+      throw new Error("Data de batismo é obrigatória quando a pessoa é batizada.");
+    }
+    return { isBaptized: true, baptismDate: new Date(input.baptismDate) };
+  }
+  return { isBaptized: false, baptismDate: null };
+}
+
+type Tx = Prisma.TransactionClient;
+
+/**
+ * Sincroniza os contatos primários (e-mail/telefone/WhatsApp) da pessoa.
+ * E-mail e telefone NÃO são únicos. Decisão simples de demo: valor vazio
+ * remove o contato daquele tipo; valor preenchido atualiza o existente ou cria.
+ */
+async function syncContacts(
+  tx: Tx,
+  tenantId: string,
+  personId: string,
+  values: { email?: string; phone?: string; whatsapp?: string },
+) {
+  const pairs: { type: ContactType; value?: string }[] = [
+    { type: "EMAIL", value: values.email },
+    { type: "PHONE", value: values.phone },
+    { type: "WHATSAPP", value: values.whatsapp },
+  ];
+  for (const { type, value } of pairs) {
+    const trimmed = value?.trim() || "";
+    const existing = await tx.contactMethod.findFirst({
+      where: { tenantId, personId, type },
+      orderBy: { createdAt: "asc" },
+    });
+    if (!trimmed) {
+      // valor vazio → remove contatos daquele tipo (decisão de demo)
+      if (existing)
+        await tx.contactMethod.deleteMany({ where: { tenantId, personId, type } });
+      continue;
+    }
+    if (existing) {
+      await tx.contactMethod.update({
+        where: { id: existing.id },
+        data: { value: trimmed, isPrimary: true },
+      });
+    } else {
+      await tx.contactMethod.create({
+        data: { tenantId, personId, type, value: trimmed, isPrimary: true },
+      });
+    }
+  }
+}
+
+/** Mantém um único endereço principal por pessoa (demo). Vazio → remove. */
+async function syncAddress(
+  tx: Tx,
+  tenantId: string,
+  personId: string,
+  input: PersonFormInput,
+) {
+  const data = {
+    street: input.street?.trim() || null,
+    number: input.number?.trim() || null,
+    complement: input.complement?.trim() || null,
+    district: input.district?.trim() || null,
+    city: input.city?.trim() || null,
+    state: input.state?.trim() || null,
+    zipCode: input.zipCode?.trim() || null,
+  };
+  const hasAny = Object.values(data).some((v) => v);
+  const existing = await tx.address.findFirst({
+    where: { tenantId, personId },
+    orderBy: { createdAt: "asc" },
+  });
+  if (!hasAny) {
+    if (existing) await tx.address.deleteMany({ where: { tenantId, personId } });
+    return;
+  }
+  if (existing) {
+    await tx.address.update({ where: { id: existing.id }, data });
+  } else {
+    await tx.address.create({ data: { tenantId, personId, ...data } });
+  }
 }
 
 /** Confere se já existe pessoa com este CPF no tenant (dedup). */
@@ -71,6 +175,7 @@ export async function createPerson(input: PersonFormInput) {
 
   const cpf = normalizeCpf(input.cpf);
   if (cpf) await assertCpfUnique(ctx.tenantId, cpf);
+  const baptism = resolveBaptism(input);
 
   const person = await prisma.$transaction(async (tx) => {
     const p = await tx.person.create({
@@ -84,8 +189,8 @@ export async function createPerson(input: PersonFormInput) {
         sex: input.sex || null,
         maritalStatus: input.maritalStatus || null,
         status: "VISITOR",
-        isBaptized: !!input.isBaptized,
-        baptismDate: input.baptismDate ? new Date(input.baptismDate) : null,
+        isBaptized: baptism.isBaptized,
+        baptismDate: baptism.baptismDate,
         hasTD: !!input.hasTD,
         tdDate: input.tdDate ? new Date(input.tdDate) : null,
         operationalNotes: input.operationalNotes?.trim() || null,
@@ -93,16 +198,8 @@ export async function createPerson(input: PersonFormInput) {
       },
     });
 
-    const contacts: { type: ContactType; value: string }[] = [];
-    if (input.email) contacts.push({ type: "EMAIL", value: input.email.trim() });
-    if (input.phone) contacts.push({ type: "PHONE", value: input.phone.trim() });
-    if (input.whatsapp)
-      contacts.push({ type: "WHATSAPP", value: input.whatsapp.trim() });
-    for (const c of contacts) {
-      await tx.contactMethod.create({
-        data: { tenantId: ctx.tenantId, personId: p.id, ...c },
-      });
-    }
+    await syncContacts(tx, ctx.tenantId, p.id, input);
+    await syncAddress(tx, ctx.tenantId, p.id, input);
 
     await tx.personStatusHistory.create({
       data: {
@@ -168,6 +265,7 @@ export async function updatePerson(personId: string, input: PersonFormInput) {
   if (canEditCpf && cpf && cpf !== before.cpf) {
     await assertCpfUnique(ctx.tenantId, cpf, personId);
   }
+  const baptism = resolveBaptism(input);
 
   await prisma.$transaction(async (tx) => {
     const after = await tx.person.update({
@@ -180,13 +278,17 @@ export async function updatePerson(personId: string, input: PersonFormInput) {
         sex: input.sex || null,
         maritalStatus: input.maritalStatus || null,
         campusId: input.campusId || null,
-        isBaptized: !!input.isBaptized,
-        baptismDate: input.baptismDate ? new Date(input.baptismDate) : null,
+        isBaptized: baptism.isBaptized,
+        baptismDate: baptism.baptismDate,
         hasTD: !!input.hasTD,
         tdDate: input.tdDate ? new Date(input.tdDate) : null,
         operationalNotes: input.operationalNotes?.trim() || null,
       },
     });
+
+    // Atualiza contatos (e-mail/telefone/WhatsApp) e endereço principal.
+    await syncContacts(tx, ctx.tenantId, personId, input);
+    await syncAddress(tx, ctx.tenantId, personId, input);
 
     await writeAudit(tx, {
       tenantId: ctx.tenantId,
@@ -198,7 +300,12 @@ export async function updatePerson(personId: string, input: PersonFormInput) {
       entityId: personId,
       sensitivity: cpf ? "CONFIDENTIAL" : "INTERNAL",
       before: { fullName: before.fullName, status: before.status },
-      after: { fullName: after.fullName, status: after.status },
+      after: {
+        fullName: after.fullName,
+        status: after.status,
+        contacts: { email: input.email, phone: input.phone, whatsapp: input.whatsapp },
+        addressUpdated: true,
+      },
     });
 
     await emitEvent(tx, {

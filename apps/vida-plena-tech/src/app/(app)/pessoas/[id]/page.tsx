@@ -66,6 +66,23 @@ export default async function PersonPage({
       })
     : [];
 
+  // Leitura sensível auditada: pastor abriu ficha que CONTÉM nota pastoral.
+  if (canSensitive && pastoralNotes.length > 0) {
+    await prisma.auditLog.create({
+      data: {
+        tenantId: ctx.tenantId,
+        actorUserId: ctx.userId,
+        actorPersonId: ctx.personId,
+        module: "people",
+        action: "read_sensitive",
+        entityType: "PastoralNote",
+        entityId: id, // pessoa acessada
+        sensitivity: "CONFIDENTIAL",
+        reason: "Abertura de ficha com observação pastoral",
+      },
+    });
+  }
+
   // Timeline: esconde itens sensíveis de quem não pode vê-los.
   const timeline = person.timeline.filter(
     (t) => canSensitive || t.sensitivity !== "CONFIDENTIAL",
@@ -133,6 +150,11 @@ export default async function PersonPage({
               {person.contacts.map((c) => (
                 <Info key={c.id} label={c.type} value={c.value} />
               ))}
+              {person.addresses[0] ? (
+                <div className="col-span-2">
+                  <Info label="Endereço" value={formatAddress(person.addresses[0])} />
+                </div>
+              ) : null}
               {person.operationalNotes ? (
                 <div className="col-span-2">
                   <Info label="Observações operacionais" value={person.operationalNotes} />
@@ -241,7 +263,7 @@ export default async function PersonPage({
             </Card>
           ) : null}
 
-          {can(ctx, "groups.gc.view") ? (
+          {can(ctx, "groups.membership.manage") ? (
             <Card>
               <CardHeader>
                 <CardTitle>Grupo de Crescimento</CardTitle>
@@ -292,4 +314,24 @@ function Info({ label, value, mono }: { label: string; value: string; mono?: boo
       <div className={mono ? "font-mono text-sm" : "text-sm"}>{value}</div>
     </div>
   );
+}
+
+function formatAddress(a: {
+  street: string | null;
+  number: string | null;
+  complement: string | null;
+  district: string | null;
+  city: string | null;
+  state: string | null;
+  zipCode: string | null;
+}): string {
+  const line1 = [a.street, a.number].filter(Boolean).join(", ");
+  const parts = [
+    line1,
+    a.complement,
+    a.district,
+    [a.city, a.state].filter(Boolean).join(" / "),
+    a.zipCode,
+  ].filter((p) => p && p.length > 0);
+  return parts.join(" · ") || "—";
 }

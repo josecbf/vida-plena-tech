@@ -8,6 +8,7 @@ import {
   requireContext,
   assertPermission,
   visibleGcIds,
+  canViewPerson,
 } from "@/server/context";
 import { writeAudit, emitEvent, addTimeline } from "@/server/audit";
 
@@ -32,8 +33,16 @@ export async function changePersonGc(input: {
   reason?: string;
 }) {
   const ctx = await requireContext();
-  assertPermission(ctx, "groups.gc.view");
+  // Permissão mais forte do que apenas visualizar (deny-by-default).
+  assertPermission(ctx, "groups.membership.manage");
+  // GC de destino precisa estar no escopo do usuário…
   await assertGcInScope(ctx, input.gcId);
+  // …e a pessoa transferida precisa já ser visível por ele.
+  // (líder não transfere pessoa de outro GC; supervisor/coordenador/pastor só
+  //  dentro do próprio escopo; admin e pastor sênior, todo o tenant.)
+  if (!(await canViewPerson(ctx, input.personId))) {
+    throw new Error("Acesso negado: pessoa fora do seu escopo.");
+  }
 
   const person = await prisma.person.findFirstOrThrow({
     where: { id: input.personId, tenantId: ctx.tenantId },
@@ -155,6 +164,23 @@ export async function recordAttendance(input: {
     where: { id: input.meetingId, tenantId: ctx.tenantId },
   });
   await assertGcInScope(ctx, meeting.gcId);
+
+  // Validação server-side: cada personId precisa pertencer ao GC do encontro
+  // (vínculo ativo) ou estar no escopo do usuário. Não confiar na UI.
+  const gcMembers = await prisma.growthGroupMembership.findMany({
+    where: { tenantId: ctx.tenantId, gcId: meeting.gcId, leftAt: null },
+    select: { personId: true },
+  });
+  const gcMemberSet = new Set(gcMembers.map((m) => m.personId));
+  for (const e of input.entries) {
+    if (!e.personId) continue; // visitante avulso (só nome) é permitido
+    if (gcMemberSet.has(e.personId)) continue;
+    if (!(await canViewPerson(ctx, e.personId))) {
+      throw new Error(
+        "Pessoa fora do GC/escopo não pode ter presença registrada neste encontro.",
+      );
+    }
+  }
 
   await prisma.$transaction(async (tx) => {
     // Substitui presenças anteriores do encontro (idempotente por registro)

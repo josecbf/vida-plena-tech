@@ -103,15 +103,49 @@ Cadastro público (sem login):
 10. **CPF aparece mascarado** para não-admin (`***.***.***-XX`).
 11. **Estrutura Prover existe sem chamada real** (`/prover`).
 12. **Ensino/EAD documentado** como próxima fase, não implementado.
+13. **Edição de contato persiste** — alterar e-mail/telefone/WhatsApp na edição da pessoa
+    grava em `ContactMethod` e aparece na ficha; esvaziar o campo remove o contato.
+14. **Endereço** — preencher rua/número/complemento/bairro/cidade/UF/CEP na edição grava em
+    `Address` e aparece na ficha.
+15. **Inscrição pública em evento** (`/e/[id]`) — sem login, cria visitante (origem
+    `EVENT_PUBLIC`) e inscrição, com dedup por CPF e aviso de possível duplicidade.
+16. **Auditoria de leitura de nota pastoral** — quando um pastor abre a ficha de quem tem
+    observação pastoral, é gravado um `AuditLog` com `action: read_sensitive` em `/auditoria`.
+17. **Transferência de pessoa fora do escopo é bloqueada** no backend — um líder não consegue
+    transferir alguém de outro GC (exige `groups.membership.manage` + pessoa visível).
+18. **Presença e inscrição validadas no backend** — `personId` fora do GC/escopo é recusado.
+19. **`ExternalMapping` é polimórfico** (sem FK direta) — pronto para mapear Person, GC, Event,
+    GrowthGroupMeeting, EventRegistration, Course etc. na importação Prover.
+
+---
+
+## Roteiro de teste das correções
+
+1. **Edição de contato + endereço:** entre como `admin@` → uma pessoa → *Editar* → altere
+   e-mail/telefone/WhatsApp e preencha o endereço → salvar. Veja os valores na ficha. Volte,
+   apague o e-mail e salve → o contato some. (Em `/auditoria`, aparece `people.update`.)
+2. **Inscrição pública em evento:** abra `/e/<id-de-evento-publicado>` numa aba anônima (pegue
+   o id no card "Inscrição pública" do detalhe do evento, como `admin@`). Inscreva-se com nome
+   + WhatsApp → confirma. Repita com um CPF já existente → reaproveita o cadastro. Veja a nova
+   pessoa (origem *Inscrição em evento*) e a inscrição na ficha e em `/auditoria`.
+3. **Auditoria de nota pastoral:** como `pastor@` ou `senior@`, abra a ficha de **Marcos Vieira**
+   (tem observação pastoral seedada) → em `/auditoria` surge `people.read_sensitive` (CONFIDENTIAL).
+   Como `admin@`/`lider@`, a observação **não** aparece.
+4. **Transferência fora de escopo (bloqueio):** como `lider@` (GC Graça), tente transferir uma
+   pessoa que não é do seu GC — a opção não aparece para pessoas fora do escopo, e qualquer
+   tentativa forçada falha no backend. Como `admin@`/`senior@`, transfira qualquer pessoa.
+5. **Presença validada no backend:** o registro de presença só aceita membros ativos do GC ou
+   pessoas no seu escopo; ids fora disso são recusados.
+6. **Batismo:** marque "Batizado" sem data → o backend recusa; desmarque → a data é zerada.
 
 ---
 
 ## Telas
 
-Login · Dashboard · Pessoas (lista, criar, editar, ficha, família, timeline) ·
-Cadastro público · Cadastro por GC · GCs (lista, detalhe, link de cadastro,
-criar encontro, registrar presença) · Eventos (lista, criar, detalhe, minhas
-inscrições) · Auditoria · Usuários e papéis · Módulos · Importação Prover.
+Login · Dashboard · Pessoas (lista, criar, editar [com contatos e endereço], ficha, família,
+timeline) · Cadastro público · Cadastro por GC · **Inscrição pública em evento (`/e/[id]`)** ·
+GCs (lista, detalhe, link de cadastro, criar encontro, registrar presença) · Eventos (lista,
+criar, detalhe, minhas inscrições) · Auditoria · Usuários e papéis · Módulos · Importação Prover.
 
 ---
 

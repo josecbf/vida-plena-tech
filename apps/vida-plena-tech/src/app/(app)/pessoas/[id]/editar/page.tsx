@@ -22,12 +22,16 @@ export default async function EditPersonPage({
 
   const person = await prisma.person.findFirst({
     where: { id, tenantId: ctx.tenantId },
-    include: { contacts: true },
+    include: {
+      contacts: true,
+      addresses: { orderBy: { createdAt: "asc" }, take: 1 },
+    },
   });
   if (!person) notFound();
 
   const contact = (t: ContactType) =>
     person.contacts.find((c) => c.type === t)?.value ?? "";
+  const addr = person.addresses[0];
 
   const toDateInput = (d: Date | null) =>
     d ? d.toISOString().slice(0, 10) : "";
@@ -62,6 +66,13 @@ export default async function EditPersonPage({
           hasTD: person.hasTD,
           tdDate: toDateInput(person.tdDate),
           operationalNotes: person.operationalNotes ?? "",
+          street: addr?.street ?? "",
+          number: addr?.number ?? "",
+          complement: addr?.complement ?? "",
+          district: addr?.district ?? "",
+          city: addr?.city ?? "",
+          state: addr?.state ?? "",
+          zipCode: addr?.zipCode ?? "",
         }}
       />
     </div>

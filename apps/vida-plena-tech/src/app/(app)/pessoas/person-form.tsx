@@ -32,6 +32,13 @@ export function PersonForm({ mode, personId, campuses, initial, canSeeFullCpf }:
     hasTD: initial?.hasTD ?? false,
     tdDate: initial?.tdDate ?? "",
     operationalNotes: initial?.operationalNotes ?? "",
+    street: initial?.street ?? "",
+    number: initial?.number ?? "",
+    complement: initial?.complement ?? "",
+    district: initial?.district ?? "",
+    city: initial?.city ?? "",
+    state: initial?.state ?? "",
+    zipCode: initial?.zipCode ?? "",
   });
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -161,6 +168,47 @@ export function PersonForm({ mode, personId, campuses, initial, canSeeFullCpf }:
               </Field>
             </div>
           ) : null}
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-line p-4">
+        <p className="mb-3 text-sm font-medium">Endereço principal</p>
+        <div className="grid gap-4 md:grid-cols-6">
+          <div className="md:col-span-4">
+            <Field label="Rua">
+              <Input value={form.street} onChange={(e) => set("street", e.target.value)} />
+            </Field>
+          </div>
+          <div className="md:col-span-2">
+            <Field label="Número">
+              <Input value={form.number} onChange={(e) => set("number", e.target.value)} />
+            </Field>
+          </div>
+          <div className="md:col-span-3">
+            <Field label="Complemento">
+              <Input value={form.complement} onChange={(e) => set("complement", e.target.value)} />
+            </Field>
+          </div>
+          <div className="md:col-span-3">
+            <Field label="Bairro">
+              <Input value={form.district} onChange={(e) => set("district", e.target.value)} />
+            </Field>
+          </div>
+          <div className="md:col-span-3">
+            <Field label="Cidade">
+              <Input value={form.city} onChange={(e) => set("city", e.target.value)} />
+            </Field>
+          </div>
+          <div className="md:col-span-1">
+            <Field label="UF">
+              <Input value={form.state} maxLength={2} onChange={(e) => set("state", e.target.value.toUpperCase())} />
+            </Field>
+          </div>
+          <div className="md:col-span-2">
+            <Field label="CEP">
+              <Input value={form.zipCode} onChange={(e) => set("zipCode", e.target.value)} />
+            </Field>
+          </div>
         </div>
       </div>
 

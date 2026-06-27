@@ -19,6 +19,7 @@ export type Permission =
   | "people.pastoral_note.manage"
   | "groups.gc.view"
   | "groups.gc.manage"
+  | "groups.membership.manage" // transferir pessoa entre GCs (com escopo)
   | "groups.meeting.create"
   | "groups.attendance.record"
   | "groups.invite.create"
@@ -42,6 +43,7 @@ const ALL: Permission[] = [
   "people.pastoral_note.manage",
   "groups.gc.view",
   "groups.gc.manage",
+  "groups.membership.manage",
   "groups.meeting.create",
   "groups.attendance.record",
   "groups.invite.create",
@@ -72,6 +74,7 @@ const ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
     "people.status.promote", // pode promover visitante→membro
     "people.family.manage",
     "groups.gc.view",
+    "groups.membership.manage", // pode transferir pessoa do PRÓPRIO GC (validado por escopo)
     "groups.meeting.create",
     "groups.attendance.record",
     "groups.invite.create",
@@ -86,6 +89,7 @@ const ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
     "people.family.manage",
     "groups.gc.view",
     "groups.gc.manage",
+    "groups.membership.manage",
     "groups.meeting.create",
     "groups.attendance.record",
     "groups.invite.create",
@@ -100,6 +104,7 @@ const ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
     "people.family.manage",
     "groups.gc.view",
     "groups.gc.manage",
+    "groups.membership.manage",
     "groups.meeting.create",
     "groups.attendance.record",
     "groups.invite.create",
@@ -116,6 +121,7 @@ const ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
     "people.pastoral_note.manage",
     "groups.gc.view",
     "groups.gc.manage",
+    "groups.membership.manage",
     "groups.meeting.create",
     "groups.attendance.record",
     "groups.invite.create",
@@ -133,6 +139,7 @@ const ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
     "people.pastoral_note.manage",
     "groups.gc.view",
     "groups.gc.manage",
+    "groups.membership.manage",
     "groups.meeting.create",
     "groups.attendance.record",
     "groups.invite.create",

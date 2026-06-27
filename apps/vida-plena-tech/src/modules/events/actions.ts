@@ -3,12 +3,28 @@
 import { revalidatePath } from "next/cache";
 import { EventVisibility } from "@prisma/client";
 import { prisma } from "@/server/db";
-import { requireContext, assertPermission } from "@/server/context";
+import { requireContext, assertPermission, canViewPerson } from "@/server/context";
 import { writeAudit, emitEvent, addTimeline } from "@/server/audit";
 
 // ─────────────────────────────────────────────────────────────────────────
 // MÓDULO EVENTOS (básico — sem pagamento/capacidade/lote)
 // ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * Quem pode inscrever/cancelar `personId`:
+ *  - a própria pessoa (membro inscreve a si mesmo);
+ *  - liderança, se a pessoa estiver no seu escopo (canViewPerson);
+ *  - admin e pastor sênior, todo o tenant (canViewPerson → ALL).
+ * Validado no backend, não só na UI.
+ */
+async function assertCanManageRegistration(
+  ctx: Awaited<ReturnType<typeof requireContext>>,
+  personId: string,
+) {
+  if (ctx.personId && personId === ctx.personId) return; // a si mesmo
+  if (await canViewPerson(ctx, personId)) return; // dentro do escopo
+  throw new Error("Acesso negado: pessoa fora do seu escopo.");
+}
 
 export async function createEvent(input: {
   title: string;
@@ -73,15 +89,7 @@ export async function registerForEvent(input: {
 }) {
   const ctx = await requireContext();
   assertPermission(ctx, "events.registration.create");
-
-  // Membro só pode inscrever a si mesmo; liderança+ pode inscrever no escopo.
-  if (
-    ctx.primaryRole === "MEMBER" &&
-    ctx.personId &&
-    input.personId !== ctx.personId
-  ) {
-    throw new Error("Você só pode inscrever a si mesmo.");
-  }
+  await assertCanManageRegistration(ctx, input.personId);
 
   const event = await prisma.event.findFirstOrThrow({
     where: { id: input.eventId, tenantId: ctx.tenantId },
@@ -151,13 +159,7 @@ export async function cancelRegistration(input: {
 }) {
   const ctx = await requireContext();
   assertPermission(ctx, "events.registration.create");
-  if (
-    ctx.primaryRole === "MEMBER" &&
-    ctx.personId &&
-    input.personId !== ctx.personId
-  ) {
-    throw new Error("Você só pode cancelar a sua própria inscrição.");
-  }
+  await assertCanManageRegistration(ctx, input.personId);
 
   const event = await prisma.event.findFirstOrThrow({
     where: { id: input.eventId, tenantId: ctx.tenantId },

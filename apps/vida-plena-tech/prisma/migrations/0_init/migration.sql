@@ -649,6 +649,9 @@ CREATE INDEX "DomainEventOutbox_status_idx" ON "DomainEventOutbox"("status");
 CREATE INDEX "ExternalMapping_tenantId_idx" ON "ExternalMapping"("tenantId");
 
 -- CreateIndex
+CREATE INDEX "ExternalMapping_tenantId_internalType_internalId_idx" ON "ExternalMapping"("tenantId", "internalType", "internalId");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "ExternalMapping_tenantId_system_externalType_externalId_key" ON "ExternalMapping"("tenantId", "system", "externalType", "externalId");
 
 -- CreateIndex
@@ -773,9 +776,6 @@ ALTER TABLE "DomainEventOutbox" ADD CONSTRAINT "DomainEventOutbox_tenantId_fkey"
 
 -- AddForeignKey
 ALTER TABLE "ExternalMapping" ADD CONSTRAINT "ExternalMapping_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "ExternalMapping" ADD CONSTRAINT "ExternalMapping_person_fkey" FOREIGN KEY ("internalId") REFERENCES "Person"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "ImportBatch" ADD CONSTRAINT "ImportBatch_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

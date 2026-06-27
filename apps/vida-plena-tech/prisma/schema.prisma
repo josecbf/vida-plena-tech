@@ -340,7 +340,6 @@ model Person {
   membership      TenantMembership?
   attendances     GrowthGroupAttendance[]
   eventRegs       EventRegistration[]
-  externalMaps    ExternalMapping[]
 
   // Vínculos familiares (dois lados da relação)
   householdLinksA HouseholdMember[] @relation("PersonA")
@@ -716,21 +715,26 @@ model DomainEventOutbox {
 // ─────────────────────────────────────────────────────────────────────────
 
 /// Mapeia ids externos (Prover) → entidades internas. Garante idempotência.
+///
+/// POLIMÓRFICO de propósito (sem FK direta): o importador Prover precisa mapear
+/// Person, GrowthGroup, Event, GrowthGroupMeeting, EventRegistration, Course etc.
+/// `internalType` + `internalId` identificam a entidade; a integridade é
+/// garantida pela aplicação (não por FK), pois o alvo varia por tipo.
 model ExternalMapping {
   id             String   @id @default(cuid())
   tenantId       String
   system         String   @default("PROVER")
-  externalType   String // ex: person
+  externalType   String // ex: person, growth_group, event
   externalId     String
-  internalType   String // ex: Person
+  internalType   String // ex: Person, GrowthGroup, Event, GrowthGroupMeeting, EventRegistration, Course
   internalId     String
   createdAt      DateTime @default(now())
 
-  tenant Tenant  @relation(fields: [tenantId], references: [id])
-  person Person? @relation(fields: [internalId], references: [id], map: "ExternalMapping_person_fkey")
+  tenant Tenant @relation(fields: [tenantId], references: [id])
 
   @@unique([tenantId, system, externalType, externalId])
   @@index([tenantId])
+  @@index([tenantId, internalType, internalId])
 }
 
 model ImportBatch {

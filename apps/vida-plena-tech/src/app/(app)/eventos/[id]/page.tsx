@@ -125,6 +125,23 @@ export default async function EventDetailPage({
               )}
             </CardContent>
           </Card>
+
+          {/* Link público de inscrição (para divulgação) — só organizadores. */}
+          {can(ctx, "events.event.create") && event.status === "PUBLISHED" ? (
+            <Card className="mt-4">
+              <CardHeader>
+                <CardTitle>Inscrição pública</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="mb-2 text-sm text-mist">
+                  Compartilhe este link — visitantes se inscrevem sem login:
+                </p>
+                <code className="block break-all rounded-md bg-ink/5 px-2 py-1.5 text-xs">
+                  /e/{event.id}
+                </code>
+              </CardContent>
+            </Card>
+          ) : null}
         </div>
       </div>
     </div>
