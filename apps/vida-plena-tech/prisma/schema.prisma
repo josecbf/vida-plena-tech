@@ -1,0 +1,770 @@
+// ╔══════════════════════════════════════════════════════════════════════╗
+// ║  Vida Plena Tech — Schema canônico (demo local)                        ║
+// ║                                                                        ║
+// ║  Monólito modular. Um Core comum + módulos ativáveis (Pessoas, GCs,    ║
+// ║  Eventos, e Ensino/EAD futuro). NENHUM módulo cria cadastro paralelo   ║
+// ║  de pessoa: tudo aponta para Person do Core.                           ║
+// ║                                                                        ║
+// ║  Invariantes (ver docs/Técnico/Modelo de Dados Canonico.md):           ║
+// ║   • Toda entidade operacional tem tenantId.                            ║
+// ║   • Soft delete via archivedAt/deletedAt (histórico nunca some).       ║
+// ║   • CPF é único por tenant (dedup) e sensível.                         ║
+// ║   • Schema nasce multi-tenant (demo seeda 1 tenant).                   ║
+// ║                                                                        ║
+// ║  NOTA DE PRODUÇÃO: isolamento aqui é garantido na camada de aplicação  ║
+// ║  (todo acesso passa por tenantId). Em produção, somar Postgres RLS.    ║
+// ╚══════════════════════════════════════════════════════════════════════╝
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Papel/cargo (RBAC). SEPARADO do status eclesiástico (ver complemento item 14).
+enum RoleKey {
+  MEMBER
+  GC_LEADER
+  SUPERVISOR
+  COORDINATOR
+  AREA_PASTOR
+  SENIOR_PASTOR
+  ADMIN
+}
+
+/// Status eclesiástico (relação com a igreja). NÃO confundir com cargo.
+/// Mapeamento dos status do Prover: visitante→VISITOR, membro→MEMBER,
+/// transferido→TRANSFERRED, excluído→ARCHIVED, inativo→INACTIVE.
+/// (líder/supervisor/coordenador/pastor são CARGOS, viram RoleKey, não status.)
+enum EclesiasticalStatus {
+  VISITOR
+  REGULAR_ATTENDER
+  MEMBERSHIP_INTERESTED
+  MEMBER
+  INACTIVE
+  AWAY
+  TRANSFERRED
+  ARCHIVED
+}
+
+enum Sex {
+  MALE
+  FEMALE
+  UNDISCLOSED
+}
+
+enum MaritalStatus {
+  SINGLE
+  MARRIED
+  DIVORCED
+  WIDOWED
+  STABLE_UNION
+  OTHER
+}
+
+enum ContactType {
+  EMAIL
+  PHONE
+  WHATSAPP
+}
+
+enum RegistrationSource {
+  PUBLIC_FORM
+  GC_INVITE_LINK
+  ADMIN_CREATED
+  EVENT_PUBLIC
+  PROVER_IMPORT
+}
+
+enum FamilyRelationship {
+  SPOUSE
+  FATHER
+  MOTHER
+  CHILD
+  SIBLING
+  GUARDIAN
+  DEPENDENT
+  OTHER
+}
+
+enum ScopeType {
+  TENANT
+  CAMPUS
+  AREA
+  SUPERVISION
+  GC
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  JUSTIFIED
+  VISITOR
+}
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+  FINISHED
+}
+
+enum EventVisibility {
+  PUBLIC
+  MEMBERS
+  INTERNAL
+}
+
+enum RegistrationStatus {
+  CONFIRMED
+  CANCELLED
+}
+
+enum TimelineEntryType {
+  PERSON_CREATED
+  STATUS_CHANGED
+  GC_CHANGED
+  FAMILY_LINKED
+  EVENT_REGISTRATION
+  EVENT_REGISTRATION_CANCELLED
+  ATTENDANCE
+  PASTORAL_NOTE
+  CONSENT
+  COURSE_COMPLETION // futuro (Ensino/EAD) — já reservado
+}
+
+enum Sensitivity {
+  PUBLIC
+  INTERNAL
+  CONFIDENTIAL
+  RESTRICTED
+}
+
+enum OutboxStatus {
+  PENDING
+  PUBLISHED
+  FAILED
+}
+
+enum ConsentLegalBasis {
+  CONSENT
+  LEGITIMATE_INTEREST
+  LEGAL_OBLIGATION
+  CONTRACT
+}
+
+enum ImportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum ImportItemStatus {
+  PENDING
+  CREATED
+  MATCHED
+  SKIPPED
+  FAILED
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// CORE — tenancy, campus, identidade, módulos
+// ─────────────────────────────────────────────────────────────────────────
+
+model Tenant {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  name      String
+  tagline   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  campuses             Campus[]
+  memberships          TenantMembership[]
+  people               Person[]
+  households           Household[]
+  growthGroups         GrowthGroup[]
+  events               Event[]
+  roleAssignments      RoleAssignment[]
+  auditLogs            AuditLog[]
+  domainEvents         DomainEvent[]
+  outbox               DomainEventOutbox[]
+  externalMappings     ExternalMapping[]
+  importBatches        ImportBatch[]
+  moduleSubscriptions  ModuleSubscription[]
+}
+
+model Campus {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  city      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  archivedAt DateTime?
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  people       Person[]
+  growthGroups GrowthGroup[]
+  events       Event[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+}
+
+/// Identidade de login (pode ou não estar ligada a uma Person).
+model User {
+  id           String   @id @default(cuid())
+  email        String
+  passwordHash String
+  name         String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  memberships TenantMembership[]
+  auditLogs   AuditLog[]
+
+  @@unique([email])
+}
+
+/// Liga um User a um Tenant, opcionalmente a uma Person.
+/// Pessoa pode existir SEM usuário; usuário pode se ligar a uma pessoa.
+model TenantMembership {
+  id             String    @id @default(cuid())
+  tenantId       String
+  userId         String
+  personId       String?   @unique
+  status         String    @default("ACTIVE")
+  invitedAt      DateTime?
+  acceptedAt     DateTime?
+  lastAccessedAt DateTime?
+  createdAt      DateTime  @default(now())
+
+  tenant          Tenant           @relation(fields: [tenantId], references: [id])
+  user            User             @relation(fields: [userId], references: [id])
+  person          Person?          @relation(fields: [personId], references: [id])
+  roleAssignments RoleAssignment[]
+
+  @@unique([tenantId, userId])
+  @@index([tenantId])
+}
+
+/// Papel atribuído a um membro, com escopo (deny-by-default na aplicação).
+model RoleAssignment {
+  id           String    @id @default(cuid())
+  tenantId     String
+  membershipId String
+  role         RoleKey
+  scopeType    ScopeType @default(TENANT)
+  scopeId      String? // id do campus/área/supervisão/GC quando aplicável
+  createdAt    DateTime  @default(now())
+
+  tenant     Tenant           @relation(fields: [tenantId], references: [id])
+  membership TenantMembership @relation(fields: [membershipId], references: [id])
+
+  @@index([tenantId])
+  @@index([membershipId])
+}
+
+/// Módulos ativáveis por tenant (Pessoas, GCs, Eventos, Ensino futuro).
+model ModuleSubscription {
+  id        String   @id @default(cuid())
+  tenantId  String
+  moduleKey String // people | groups | events | teaching
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, moduleKey])
+  @@index([tenantId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// PESSOAS
+// ─────────────────────────────────────────────────────────────────────────
+
+model Person {
+  id           String   @id @default(cuid())
+  tenantId     String
+  campusId     String?
+
+  fullName     String
+  socialName   String? // apelido / nome social
+  cpf          String? // OPCIONAL e SENSÍVEL; único por tenant (dedup)
+  birthDate    DateTime?
+  sex          Sex?
+  maritalStatus MaritalStatus?
+
+  status       EclesiasticalStatus @default(VISITOR)
+
+  // Batismo
+  isBaptized   Boolean   @default(false)
+  baptismDate  DateTime?
+  // Campos futuros pendentes: igreja, local, pastor/ministro (ver doc).
+
+  // TD — Treinamento de Discípulos
+  hasTD        Boolean   @default(false)
+  tdDate       DateTime?
+
+  // GC principal de cuidado pastoral (no máximo um)
+  primaryGcId  String?
+
+  operationalNotes String? // observações operacionais (não sensíveis)
+
+  source       RegistrationSource @default(ADMIN_CREATED)
+
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  archivedAt   DateTime? // soft delete / arquivamento
+
+  tenant          Tenant            @relation(fields: [tenantId], references: [id])
+  campus          Campus?           @relation(fields: [campusId], references: [id])
+  primaryGc       GrowthGroup?      @relation("PrimaryGc", fields: [primaryGcId], references: [id])
+
+  contacts        ContactMethod[]
+  addresses       Address[]
+  statusHistory   PersonStatusHistory[]
+  gcHistory       GrowthGroupMembership[]
+  pastoralNotes   PastoralNote[]
+  timeline        TimelineEntry[]
+  consents        ConsentRecord[]
+  membership      TenantMembership?
+  attendances     GrowthGroupAttendance[]
+  eventRegs       EventRegistration[]
+  externalMaps    ExternalMapping[]
+
+  // Vínculos familiares (dois lados da relação)
+  householdLinksA HouseholdMember[] @relation("PersonA")
+  ledGroups       GrowthGroup[]     @relation("GcLeader")
+  assistedGroups  GrowthGroup[]     @relation("GcAssistant")
+
+  @@unique([tenantId, cpf]) // CPF único por tenant; múltiplos NULL são permitidos no Postgres
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([primaryGcId])
+}
+
+model ContactMethod {
+  id        String      @id @default(cuid())
+  tenantId  String
+  personId  String
+  type      ContactType
+  value     String
+  isPrimary Boolean     @default(false)
+  createdAt DateTime    @default(now())
+
+  person Person @relation(fields: [personId], references: [id])
+
+  @@index([tenantId])
+  @@index([personId])
+}
+
+model Address {
+  id         String  @id @default(cuid())
+  tenantId   String
+  personId   String
+  street     String?
+  number     String?
+  complement String?
+  district   String?
+  city       String?
+  state      String?
+  zipCode    String?
+  createdAt  DateTime @default(now())
+
+  person Person @relation(fields: [personId], references: [id])
+
+  @@index([tenantId])
+  @@index([personId])
+}
+
+/// Histórico de status eclesiástico — preservado, nunca sobrescrito.
+model PersonStatusHistory {
+  id           String              @id @default(cuid())
+  tenantId     String
+  personId     String
+  fromStatus   EclesiasticalStatus?
+  toStatus     EclesiasticalStatus
+  reason       String?
+  actorUserId  String?
+  createdAt    DateTime            @default(now())
+
+  person Person @relation(fields: [personId], references: [id])
+
+  @@index([tenantId])
+  @@index([personId])
+}
+
+/// Família/casa.
+model Household {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  archivedAt DateTime?
+
+  tenant  Tenant            @relation(fields: [tenantId], references: [id])
+  members HouseholdMember[]
+
+  @@index([tenantId])
+}
+
+/// Vínculo de uma pessoa a uma família, com tipo de relacionamento.
+model HouseholdMember {
+  id           String             @id @default(cuid())
+  tenantId     String
+  householdId  String
+  personId     String
+  relationship FamilyRelationship
+  createdAt    DateTime           @default(now())
+
+  household Household @relation(fields: [householdId], references: [id])
+  person    Person    @relation("PersonA", fields: [personId], references: [id])
+
+  @@unique([householdId, personId])
+  @@index([tenantId])
+  @@index([personId])
+}
+
+/// Observação pastoral SENSÍVEL — visível apenas a AREA_PASTOR e SENIOR_PASTOR
+/// (complemento do dono, item 10). Toda leitura é auditada na aplicação.
+model PastoralNote {
+  id          String      @id @default(cuid())
+  tenantId    String
+  personId    String
+  body        String
+  sensitivity Sensitivity @default(CONFIDENTIAL)
+  authorUserId String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  archivedAt  DateTime?
+
+  person Person @relation(fields: [personId], references: [id])
+
+  @@index([tenantId])
+  @@index([personId])
+}
+
+/// Linha do tempo unificada da pessoa.
+model TimelineEntry {
+  id          String            @id @default(cuid())
+  tenantId    String
+  personId    String
+  type        TimelineEntryType
+  title       String
+  description String?
+  sensitivity Sensitivity       @default(INTERNAL)
+  occurredAt  DateTime          @default(now())
+  actorUserId String?
+
+  person Person @relation(fields: [personId], references: [id])
+
+  @@index([tenantId])
+  @@index([personId])
+}
+
+/// Consentimento versionado (LGPD).
+model ConsentRecord {
+  id            String            @id @default(cuid())
+  tenantId      String
+  personId      String
+  purpose       String
+  legalBasis    ConsentLegalBasis @default(CONSENT)
+  consentVersion String           @default("v1")
+  grantedAt     DateTime?
+  revokedAt     DateTime?
+  source        String?
+  createdAt     DateTime          @default(now())
+
+  person Person @relation(fields: [personId], references: [id])
+
+  @@index([tenantId])
+  @@index([personId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// GRUPOS DE CRESCIMENTO
+// ─────────────────────────────────────────────────────────────────────────
+
+model GrowthGroup {
+  id           String   @id @default(cuid())
+  tenantId     String
+  campusId     String?
+  name         String
+
+  // Cadeia de liderança (define escopo de visibilidade na aplicação)
+  leaderId     String?
+  assistantId  String?
+  supervisorId String? // membershipId do supervisor
+  coordinatorId String? // membershipId do coordenador
+  areaPastorId String? // membershipId do pastor de área
+
+  weekday      Int? // 0=domingo .. 6=sábado
+  time         String?
+  location     String?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  archivedAt   DateTime?
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  campus      Campus?  @relation(fields: [campusId], references: [id])
+  leader      Person?  @relation("GcLeader", fields: [leaderId], references: [id])
+  assistant   Person?  @relation("GcAssistant", fields: [assistantId], references: [id])
+
+  memberships GrowthGroupMembership[]
+  meetings    GrowthGroupMeeting[]
+  inviteLinks GrowthGroupInviteLink[]
+  primaryFor  Person[]               @relation("PrimaryGc")
+
+  @@index([tenantId])
+  @@index([leaderId])
+  @@index([supervisorId])
+}
+
+/// Histórico de participação em GC — preservado mesmo após saída/transferência.
+model GrowthGroupMembership {
+  id        String    @id @default(cuid())
+  tenantId  String
+  gcId      String
+  personId  String
+  joinedAt  DateTime  @default(now())
+  leftAt    DateTime? // null = ativo; preenchido = histórico
+  reason    String?
+
+  gc     GrowthGroup @relation(fields: [gcId], references: [id])
+  person Person      @relation(fields: [personId], references: [id])
+
+  @@index([tenantId])
+  @@index([gcId])
+  @@index([personId])
+}
+
+model GrowthGroupMeeting {
+  id        String   @id @default(cuid())
+  tenantId  String
+  gcId      String
+  date      DateTime
+  happened  Boolean  @default(true)
+  notes     String?
+  createdAt DateTime @default(now())
+  actorUserId String?
+
+  gc          GrowthGroup             @relation(fields: [gcId], references: [id])
+  attendances GrowthGroupAttendance[]
+
+  @@index([tenantId])
+  @@index([gcId])
+}
+
+model GrowthGroupAttendance {
+  id         String           @id @default(cuid())
+  tenantId   String
+  meetingId  String
+  personId   String?          // null para visitante avulso registrado pelo nome
+  visitorName String?
+  status     AttendanceStatus
+  createdAt  DateTime         @default(now())
+
+  meeting GrowthGroupMeeting @relation(fields: [meetingId], references: [id])
+  person  Person?            @relation(fields: [personId], references: [id])
+
+  @@index([tenantId])
+  @@index([meetingId])
+}
+
+model GrowthGroupInviteLink {
+  id        String   @id @default(cuid())
+  tenantId  String
+  gcId      String
+  token     String   @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  gc GrowthGroup @relation(fields: [gcId], references: [id])
+
+  @@index([tenantId])
+  @@index([gcId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// EVENTOS (básico — sem pagamento/capacidade/lote nesta fase)
+// ─────────────────────────────────────────────────────────────────────────
+
+model Event {
+  id          String          @id @default(cuid())
+  tenantId    String
+  campusId    String?
+  title       String
+  description String?
+  location    String?
+  startsAt    DateTime
+  endsAt      DateTime?
+  status      EventStatus     @default(DRAFT)
+  visibility  EventVisibility @default(MEMBERS)
+  createdByUserId String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  archivedAt  DateTime?
+
+  tenant        Tenant              @relation(fields: [tenantId], references: [id])
+  campus        Campus?             @relation(fields: [campusId], references: [id])
+  registrations EventRegistration[]
+
+  @@index([tenantId])
+}
+
+model EventRegistration {
+  id        String             @id @default(cuid())
+  tenantId  String
+  eventId   String
+  personId  String
+  status    RegistrationStatus @default(CONFIRMED)
+  createdAt DateTime           @default(now())
+  cancelledAt DateTime?
+
+  event  Event  @relation(fields: [eventId], references: [id])
+  person Person @relation(fields: [personId], references: [id])
+
+  @@unique([eventId, personId])
+  @@index([tenantId])
+  @@index([personId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// AUDITORIA + EVENTOS DE DOMÍNIO (forma canônica)
+// ─────────────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id            String      @id @default(cuid())
+  tenantId      String
+  actorUserId   String?
+  actorPersonId String?
+  module        String?
+  action        String // create | update | delete | status_changed | read_sensitive ...
+  entityType    String
+  entityId      String?
+  sensitivity   Sensitivity @default(INTERNAL)
+  beforeJson    Json?
+  afterJson     Json?
+  reason        String?
+  ip            String?
+  userAgent     String?
+  createdAt     DateTime    @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  actor  User?  @relation(fields: [actorUserId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, entityType, entityId])
+  @@index([createdAt])
+}
+
+/// Evento de domínio (registro canônico). Gravado na MESMA transação da escrita.
+model DomainEvent {
+  id            String      @id @default(cuid())
+  tenantId      String
+  eventType     String // ex: person.created
+  aggregateType String // ex: Person
+  aggregateId   String
+  actorUserId   String?
+  payloadJson   Json
+  schemaVersion Int         @default(1)
+  sensitivity   Sensitivity @default(INTERNAL)
+  createdAt     DateTime    @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@index([eventType])
+}
+
+/// Outbox transacional. Um publicador (futuro) lê PENDING e publica.
+model DomainEventOutbox {
+  id            String       @id @default(cuid())
+  tenantId      String
+  eventType     String
+  aggregateType String
+  aggregateId   String
+  payloadJson   Json
+  schemaVersion Int          @default(1)
+  sensitivity   Sensitivity  @default(INTERNAL)
+  status        OutboxStatus @default(PENDING)
+  attempts      Int          @default(0)
+  nextRetryAt   DateTime?
+  createdAt     DateTime     @default(now())
+  publishedAt   DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@index([status])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// INTEGRAÇÃO PROVER (estrutura apenas — somente leitura no futuro)
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Mapeia ids externos (Prover) → entidades internas. Garante idempotência.
+model ExternalMapping {
+  id             String   @id @default(cuid())
+  tenantId       String
+  system         String   @default("PROVER")
+  externalType   String // ex: person
+  externalId     String
+  internalType   String // ex: Person
+  internalId     String
+  createdAt      DateTime @default(now())
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id])
+  person Person? @relation(fields: [internalId], references: [id], map: "ExternalMapping_person_fkey")
+
+  @@unique([tenantId, system, externalType, externalId])
+  @@index([tenantId])
+}
+
+model ImportBatch {
+  id        String       @id @default(cuid())
+  tenantId  String
+  system    String       @default("PROVER")
+  status    ImportStatus @default(PENDING)
+  fileName  String?
+  total     Int          @default(0)
+  created   Int          @default(0)
+  matched   Int          @default(0)
+  skipped   Int          @default(0)
+  failed    Int          @default(0)
+  createdAt DateTime     @default(now())
+  finishedAt DateTime?
+
+  tenant Tenant            @relation(fields: [tenantId], references: [id])
+  items  ImportBatchItem[]
+
+  @@index([tenantId])
+}
+
+model ImportBatchItem {
+  id         String           @id @default(cuid())
+  tenantId   String
+  batchId    String
+  externalId String?
+  rawJson    Json
+  status     ImportItemStatus @default(PENDING)
+  message    String?
+  createdAt  DateTime         @default(now())
+
+  batch ImportBatch @relation(fields: [batchId], references: [id])
+
+  @@index([tenantId])
+  @@index([batchId])
+}

@@ -1,0 +1,50 @@
+@import "tailwindcss";
+
+/*
+  Identidade Vida Plena Tech — monocromático P&B, alto contraste.
+  Ver docs/Marca/Especificacao de Marca.md.
+  Sem cor de acento; cores apenas funcionais (estados de sistema).
+*/
+@theme {
+  --color-ink: #0f1115;
+  --color-paper: #ffffff;
+  --color-mist: #6b7280;
+  --color-line: #e5e7eb;
+
+  /* Estados de sistema — únicas cores permitidas, e só para feedback funcional */
+  --color-success: #16794a;
+  --color-danger: #b42318;
+  --color-warning: #b54708;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+:root {
+  --background: var(--color-paper);
+  --foreground: var(--color-ink);
+}
+
+* {
+  border-color: var(--color-line);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Títulos em caixa-alta condensada (assinatura da marca) */
+.display {
+  text-transform: uppercase;
+  letter-spacing: -0.01em;
+  font-weight: 800;
+  line-height: 0.95;
+}
+
+.tagline {
+  text-transform: uppercase;
+  letter-spacing: 0.25em;
+  font-weight: 500;
+}
