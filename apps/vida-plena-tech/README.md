@@ -70,22 +70,42 @@ pnpm dev                    # http://localhost:3000
 
 ## Credenciais de demonstração
 
-Todos os logins usam a senha **`demo1234`**. Cada papel enxerga um escopo diferente
-(validação real, no backend, não só na interface).
+> **Senha de TODOS os logins: `demo1234`**
 
-| Papel | E-mail | O que enxerga |
-|---|---|---|
-| Administrativo | `admin@vidaplena.org` | Tudo do tenant — **exceto** observações pastorais sensíveis |
-| Pastor Sênior | `senior@vidaplena.org` | Tudo, **incluindo** observações pastorais |
-| Pastor de Área | `pastor@vidaplena.org` | Sua área — vê observações pastorais no escopo |
-| Coordenador | `coordenador@vidaplena.org` | GCs sob sua coordenação |
-| Supervisor | `supervisor@vidaplena.org` | GCs sob sua supervisão (GC Graça, GC Esperança) |
-| Líder de GC | `lider@vidaplena.org` | Apenas o seu GC (GC Graça) e suas pessoas |
-| Membro | `membro@vidaplena.org` | Apenas seus próprios dados, eventos e inscrições |
+Cada papel enxerga um escopo diferente (validação real, no backend, não só na interface).
+Os logins são criados pelo `pnpm db:seed` — se o login falhar com "Credenciais inválidas",
+quase sempre o seed não rodou (ou o Postgres não está no ar).
 
-Cadastro público (sem login):
-- **Formulário público:** `/cadastro`
-- **Link por GC (exemplo seedado):** `/cadastro/gc/gc-graca-demo`
+### Logins principais
+
+| Papel | E-mail | Senha | O que enxerga |
+|---|---|---|---|
+| Administrativo | `admin@vidaplena.org` | `demo1234` | Tudo do tenant — **exceto** observações pastorais sensíveis |
+| Pastor Sênior | `senior@vidaplena.org` | `demo1234` | Tudo, **incluindo** observações pastorais |
+| Pastor de Área | `pastor@vidaplena.org` | `demo1234` | Sua área — vê observações pastorais no escopo |
+| Coordenador | `coordenador@vidaplena.org` | `demo1234` | GCs sob sua coordenação |
+| Supervisor | `supervisor@vidaplena.org` | `demo1234` | GC Graça e GC Esperança (sua supervisão) |
+| Líder de GC | `lider@vidaplena.org` | `demo1234` | Apenas o GC Graça e suas pessoas |
+| Membro | `membro@vidaplena.org` | `demo1234` | Apenas seus próprios dados, eventos e inscrições |
+
+### Logins extras (para testar diferença de escopo)
+
+| Papel | E-mail | Senha | Escopo |
+|---|---|---|---|
+| Supervisor (2) | `supervisor2@vidaplena.org` | `demo1234` | GC Aliança e GC Restauração (não vê os do supervisor 1) |
+| Líder de GC | `lider2@vidaplena.org` | `demo1234` | Apenas o GC Esperança |
+| Líder de GC | `lider3@vidaplena.org` | `demo1234` | Apenas o GC Aliança |
+| Líder de GC | `lider4@vidaplena.org` | `demo1234` | Apenas o GC Restauração |
+
+> **Dica de teste de escopo:** entre como `lider@` (vê só o GC Graça), depois `supervisor@`
+> (vê Graça + Esperança) e `supervisor2@` (vê Aliança + Restauração) — confirme que um não
+> enxerga os GCs do outro. Como `admin@`/`senior@`, você vê o tenant inteiro.
+
+### Páginas públicas (sem login)
+
+- **Cadastro público:** `/cadastro`
+- **Cadastro por link de GC (exemplo seedado):** `/cadastro/gc/gc-graca-demo`
+- **Inscrição pública em evento:** `/e/[id]` (pegue o id no card "Inscrição pública" do detalhe do evento)
 
 ---
 
