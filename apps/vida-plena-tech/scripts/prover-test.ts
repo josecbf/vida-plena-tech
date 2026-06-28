@@ -14,8 +14,14 @@ import {
   runPessoasDryRun,
 } from "../src/modules/integrations/prover/dry-run";
 import { runPessoasApply } from "../src/modules/integrations/prover/apply";
-import type { ProverPerson } from "../src/modules/integrations/prover/types";
+import { normalizeProverGroup } from "../src/modules/integrations/prover/normalize-group";
+import { runGroupsDryRun } from "../src/modules/integrations/prover/groups-dry-run";
+import type { ProverPerson, ProverGroup } from "../src/modules/integrations/prover/types";
 import { spawnSync } from "node:child_process";
+
+function group(g: Partial<ProverGroup>): ProverGroup {
+  return { grupo_id: "g-x", grupo_nome: "GC Teste", ...g } as ProverGroup;
+}
 
 let passed = 0;
 let failed = 0;
@@ -265,6 +271,79 @@ await (async () => {
     check("A10. apply não cria RoleAssignment", rolesAfter === rolesBefore, `${rolesBefore}→${rolesAfter}`);
   } catch (e) {
     console.log(`  ⚠ A. (skip) DB indisponível: ${e instanceof Error ? e.message : e}`);
+  } finally {
+    await prisma.$disconnect();
+  }
+})();
+
+// ── GRUPOS — normalização (pura) ──────────────────────────────────────────
+
+// G1) grupo ativo
+check("G1. status Ativo → ACTIVE", normalizeProverGroup(group({ grupo_status: "Ativo" })).status === "ACTIVE");
+// G2) grupo inativo
+check("G2. status Inativo → INACTIVE", normalizeProverGroup(group({ grupo_status: "Inativo" })).status === "INACTIVE");
+// G7) status desconhecido → warning
+{
+  const n = normalizeProverGroup(group({ grupo_status: "Qualquer" }));
+  check("G7. status desconhecido → UNKNOWN + warning", n.status === "UNKNOWN" && n.warnings.includes("UNKNOWN_GROUP_STATUS"));
+}
+// G3) grupo sem líder → ABSENT + warning
+{
+  const n = normalizeProverGroup(group({ pessoa_uuid_lider_1: null }));
+  check("G3. sem líder → ABSENT + LEADERSHIP_ABSENT", n.leadershipSuggestion === "ABSENT" && n.warnings.includes("LEADERSHIP_ABSENT"));
+}
+// G4/G6) líder + auxiliar diferente → DUAL
+{
+  const n = normalizeProverGroup(group({ pessoa_uuid_lider_1: "uA", pessoa_uuid_lider_2: "uB", grupo_nome: "A | B" }));
+  check("G6. líder + 2º líder distinto → DUAL", n.leadershipSuggestion === "DUAL");
+  check("G6b. nome 'A | B' em DUAL → NAME_SUGGESTS_COUPLE", n.warnings.includes("NAME_SUGGESTS_COUPLE"));
+}
+// líder + 2º líder IGUAL → INDIVIDUAL (não conta duplicado como dual)
+{
+  const n = normalizeProverGroup(group({ pessoa_uuid_lider_1: "uA", pessoa_uuid_lider_2: "uA" }));
+  check("G6c. 2º líder == líder → INDIVIDUAL", n.leadershipSuggestion === "INDIVIDUAL");
+}
+
+// ── GRUPOS — dry-run DB-backed (não cria GC/User/Role) ────────────────────
+await (async () => {
+  const prisma = new PrismaClient();
+  try {
+    const slug = "prover-groups-test";
+    let t = await prisma.tenant.findUnique({ where: { slug } });
+    if (!t) t = await prisma.tenant.create({ data: { slug, name: "Groups Test Tenant" } });
+    const tid = t.id;
+    await prisma.importBatchItem.deleteMany({ where: { tenantId: tid } });
+    await prisma.importBatch.deleteMany({ where: { tenantId: tid } });
+    await prisma.externalMapping.deleteMany({ where: { tenantId: tid } });
+    await prisma.person.deleteMany({ where: { tenantId: tid } });
+
+    // cria 1 pessoa + mapping p/ testar líder mapeado vs não encontrado
+    const p = await prisma.person.create({ data: { tenantId: tid, fullName: "Líder Mapeado", source: "PROVER_IMPORT" } });
+    await prisma.externalMapping.create({ data: { tenantId: tid, system: "PROVER", externalType: "person", externalId: "uuid-leader", internalType: "Person", internalId: p.id } });
+
+    const gcBefore = await prisma.growthGroup.count({ where: { tenantId: tid } });
+    const usersBefore = await prisma.user.count();
+    const rolesBefore = await prisma.roleAssignment.count();
+
+    const grupos: ProverGroup[] = [
+      group({ grupo_id: "g1", grupo_nome: "GC Mapeado", grupo_status: "Ativo", pessoa_uuid_lider_1: "uuid-leader" }),
+      group({ grupo_id: "g2", grupo_nome: "GC Líder Sumido", grupo_status: "Ativo", pessoa_uuid_lider_1: "uuid-inexistente" }),
+    ];
+    const r = await runGroupsDryRun(prisma, { tenantId: tid, fileName: "test.json", grupos });
+
+    const gcAfter = await prisma.growthGroup.count({ where: { tenantId: tid } });
+    check("G8. dry-run NÃO cria GrowthGroup", gcBefore === gcAfter && gcAfter === 0, `${gcBefore}→${gcAfter}`);
+    check("G4. líder mapeado contabilizado", r.withLeaderMapped === 1, `withLeaderMapped=${r.withLeaderMapped}`);
+    check("G5. líder não encontrado vira warning/contagem", r.leaderNotFound === 1, `leaderNotFound=${r.leaderNotFound}`);
+    const items = await prisma.importBatchItem.count({ where: { batchId: r.batchId } });
+    check("G8b. 2 ImportBatchItem criados (dry-run)", items === 2, `items=${items}`);
+
+    const usersAfter = await prisma.user.count();
+    const rolesAfter = await prisma.roleAssignment.count();
+    check("G9. dry-run grupos NÃO cria RoleAssignment", rolesAfter === rolesBefore);
+    check("G10. dry-run grupos NÃO cria User", usersAfter === usersBefore);
+  } catch (e) {
+    console.log(`  ⚠ G. (skip) DB indisponível: ${e instanceof Error ? e.message : e}`);
   } finally {
     await prisma.$disconnect();
   }

@@ -17,6 +17,7 @@
     "db:studio": "prisma studio",
     "prover:dry-run": "tsx scripts/prover-dry-run.ts",
     "prover:apply": "tsx scripts/prover-apply.ts",
+    "prover:groups:dry-run": "tsx scripts/prover-groups-dry-run.ts",
     "prover:test": "tsx scripts/prover-test.ts"
   },
   "prisma": {

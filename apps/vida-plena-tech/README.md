@@ -231,16 +231,36 @@ Os lotes ficam visíveis na tela **/prover** (admin). A classificação granular
 (`WOULD_CREATE`, `MATCHED_BY_CPF`, `POSSIBLE_DUPLICATE_REVIEW`, …) fica no campo `message` do
 `ImportBatchItem`.
 
-### Testes das funções puras
+### Apply (Fase 1B) — cria/atualiza pessoas (exige `--confirm APPLY`)
 
 ```bash
-pnpm prover:test     # valida CPF, normalização de status, separação papel/cargo, dedup…
+pnpm prover:apply --file ./data/export.zip --limit 50 --confirm APPLY
+```
+Idempotente (ExternalMapping → CPF → create). Sem `--confirm APPLY` o comando recusa.
+Nunca cria login/role; membro sem GC não vira oficial; CPF inválido/placeholder não é salvo.
+
+### Grupos — dry-run (Fase 2A)
+
+```bash
+pnpm prover:groups:dry-run --file ./data/export_prover_2026-06-27.zip
+```
+Lê `grupos.json`, resolve a liderança (líder/auxiliar/supervisor/coordenador) via
+`ExternalMapping` das **pessoas já importadas** (a Fase 1B apply precisa ter rodado, senão
+a resolução vem vazia — o comando avisa). **Não** cria `GrowthGroup`/`User`/`RoleAssignment`/
+`LeadershipUnit`. Liderança dupla = **sugestão** (`INDIVIDUAL`/`DUAL`/`ABSENT`), nunca inferência.
+Campos ausentes no export real (pastor de área, dia/horário) são marcados como pendência.
+
+### Testes das funções puras + DB
+
+```bash
+pnpm prover:test     # CPF, status×cargo, dedup, apply idempotente, grupos…
 ```
 
-### Próximos passos (modo apply — fora desta rodada)
+### Próximos passos (fora desta rodada)
 
-Criar real de `Person`/contato/endereço + `ExternalMapping` idempotente, papéis pretendidos,
-relatório de conflitos acionável e, depois, as fases de GC/eventos. Detalhe no plano.
+Apply de Grupos (criar `GrowthGroup` + `ExternalMapping` + cadeia de liderança/`LeadershipUnit`),
+depois participantes/encontros/presenças e eventos. Detalhe em
+`docs/modules/prover-import-plan.md`.
 
 ---
 

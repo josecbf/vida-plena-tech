@@ -2,31 +2,27 @@ import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import AdmZip from "adm-zip";
-import type { ProverPerson } from "./types";
+import type { ProverPerson, ProverGroup } from "./types";
 
 // ─────────────────────────────────────────────────────────────────────────
 // LEITURA DO EXPORT Prover (LOCAL, SOMENTE LEITURA)
 //
-// Lê um ZIP exportado do Prover e extrai `pessoas.json`. Para conveniência de
-// teste, também aceita um caminho direto para um `.json` (não é o fluxo real).
+// Lê um ZIP exportado do Prover e extrai um JSON (pessoas.json/grupos.json).
+// Para conveniência de teste, também aceita um caminho direto para um `.json`.
 // NUNCA escreve no Prover nem em lugar nenhum.
 // ─────────────────────────────────────────────────────────────────────────
 
-export interface LoadedPessoas {
+export interface LoadedJson<T> {
   fileName: string;
-  sourceFileHash: string; // sha256 do pessoas.json (rastreabilidade/idempotência)
-  pessoas: ProverPerson[];
+  sourceFileHash: string; // sha256 do conteúdo (rastreabilidade/idempotência)
+  records: T[];
 }
 
-/** Encontra a entrada `pessoas.json` no ZIP (raiz ou subpasta). */
-function findPessoasEntry(zip: AdmZip): AdmZip.IZipEntry | null {
-  const entries = zip.getEntries();
-  return (
-    entries.find((e) => e.entryName.toLowerCase().endsWith("pessoas.json")) ?? null
-  );
-}
-
-export function loadProverPessoas(filePath: string): LoadedPessoas {
+/**
+ * Lê `entryName` (ex.: "pessoas.json"/"grupos.json") de um .zip, ou um .json
+ * direto. Aceita array no topo OU { <key>: [...] } / { data: [...] }.
+ */
+function loadEntry<T>(filePath: string, entryName: string): LoadedJson<T> {
   const fileName = path.basename(filePath);
   let jsonText: string;
 
@@ -37,44 +33,58 @@ export function loadProverPessoas(filePath: string): LoadedPessoas {
     } catch {
       throw new Error(`Não foi possível abrir o ZIP: ${filePath}`);
     }
-    const entry = findPessoasEntry(zip);
-    if (!entry) {
-      throw new Error("Arquivo `pessoas.json` não encontrado dentro do ZIP.");
-    }
+    const entry =
+      zip.getEntries().find((e) => e.entryName.toLowerCase().endsWith(entryName)) ?? null;
+    if (!entry) throw new Error(`Arquivo \`${entryName}\` não encontrado dentro do ZIP.`);
     jsonText = zip.readAsText(entry);
   } else if (filePath.toLowerCase().endsWith(".json")) {
-    // Conveniência de teste: caminho direto para um pessoas.json
     try {
       jsonText = readFileSync(filePath, "utf8");
     } catch {
       throw new Error(`Não foi possível ler o arquivo JSON: ${filePath}`);
     }
   } else {
-    throw new Error(
-      "Informe um arquivo .zip do Prover (ou um .json de teste com pessoas).",
-    );
+    throw new Error(`Informe um .zip do Prover (ou um .json de teste para ${entryName}).`);
   }
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(jsonText);
   } catch {
-    throw new Error("`pessoas.json` não é um JSON válido.");
+    throw new Error(`\`${entryName}\` não é um JSON válido.`);
   }
 
-  // Aceita array direto OU objeto { pessoas: [...] } / { data: [...] }
-  const pessoas =
-    Array.isArray(parsed)
-      ? parsed
-      : (parsed as { pessoas?: unknown; data?: unknown })?.pessoas ??
-        (parsed as { data?: unknown })?.data;
+  const records = Array.isArray(parsed)
+    ? parsed
+    : (parsed as Record<string, unknown>)?.[entryName.replace(/\.json$/, "")] ??
+      (parsed as { data?: unknown })?.data;
 
-  if (!Array.isArray(pessoas)) {
-    throw new Error(
-      "`pessoas.json` deve conter um array de pessoas (ou { pessoas: [...] }).",
-    );
+  if (!Array.isArray(records)) {
+    throw new Error(`\`${entryName}\` deve conter um array (ou { ...: [...] }).`);
   }
 
   const sourceFileHash = createHash("sha256").update(jsonText).digest("hex");
-  return { fileName, sourceFileHash, pessoas: pessoas as ProverPerson[] };
+  return { fileName, sourceFileHash, records: records as T[] };
+}
+
+export interface LoadedPessoas {
+  fileName: string;
+  sourceFileHash: string;
+  pessoas: ProverPerson[];
+}
+
+export function loadProverPessoas(filePath: string): LoadedPessoas {
+  const { fileName, sourceFileHash, records } = loadEntry<ProverPerson>(filePath, "pessoas.json");
+  return { fileName, sourceFileHash, pessoas: records };
+}
+
+export interface LoadedGrupos {
+  fileName: string;
+  sourceFileHash: string;
+  grupos: ProverGroup[];
+}
+
+export function loadProverGroups(filePath: string): LoadedGrupos {
+  const { fileName, sourceFileHash, records } = loadEntry<ProverGroup>(filePath, "grupos.json");
+  return { fileName, sourceFileHash, grupos: records };
 }

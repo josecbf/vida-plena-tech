@@ -39,6 +39,35 @@ export interface ProverPerson {
   ocorrencias?: string;
 }
 
+/**
+ * Forma (parcial) de um grupo em `grupos.json` (nomes reais do export).
+ * NÃO há campo de pastor de área nem de dia/horário no export (ver plano).
+ */
+export interface ProverGroup {
+  grupo_id: string;
+  grupo_nome: string;
+  grupo_status?: string; // Ativo / Inativo
+  grupo_tipo?: string;
+  grupo_data_criacao?: string;
+  grupo_limite_pessoas?: string;
+  endereco_logradouro?: string;
+  endereco_numero?: string;
+  endereco_bairro?: string;
+  endereco_cidade?: string | null;
+  endereco_estado?: string | null;
+  endereco_cep?: string;
+  rede_id?: string | null;
+  rede_nome?: string | null;
+  // liderança (UUIDs de pessoa do Prover → resolver via ExternalMapping)
+  pessoa_uuid_lider_1?: string | null;
+  pessoa_uuid_lider_2?: string | null;
+  pessoa_uuid_lider_em_treinamento?: string | null;
+  pessoa_uuid_supervisor_1?: string | null;
+  pessoa_uuid_supervisor_2?: string | null;
+  pessoa_uuid_coordenador_a__1?: string | null;
+  pessoa_uuid_coordenador_a__2?: string | null;
+}
+
 export interface ProverExportManifest {
   exportedAt: string;
   counts: { people: number };
