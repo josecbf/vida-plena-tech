@@ -18,6 +18,7 @@
     "prover:dry-run": "tsx scripts/prover-dry-run.ts",
     "prover:apply": "tsx scripts/prover-apply.ts",
     "prover:groups:dry-run": "tsx scripts/prover-groups-dry-run.ts",
+    "prover:groups:apply": "tsx scripts/prover-groups-apply.ts",
     "prover:test": "tsx scripts/prover-test.ts"
   },
   "prisma": {

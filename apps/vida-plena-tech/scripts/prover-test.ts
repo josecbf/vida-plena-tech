@@ -19,6 +19,7 @@ import {
   normalizeGroupFunction,
 } from "../src/modules/integrations/prover/normalize-group";
 import { runGroupsDryRun } from "../src/modules/integrations/prover/groups-dry-run";
+import { runGroupsApply } from "../src/modules/integrations/prover/groups-apply";
 import {
   inferUnitType,
   buildUnitName,
@@ -417,6 +418,95 @@ await (async () => {
   }
 })();
 
+// ── GRUPOS — APPLY DB-backed (cria GC + unidades; idempotente) ────────────
+await (async () => {
+  const prisma = new PrismaClient();
+  try {
+    const slug = "prover-groups-apply-test";
+    let t = await prisma.tenant.findUnique({ where: { slug } });
+    if (!t) t = await prisma.tenant.create({ data: { slug, name: "Groups Apply Test" } });
+    const tid = t.id;
+    // limpa (ordem de FKs)
+    await prisma.importBatchItem.deleteMany({ where: { tenantId: tid } });
+    await prisma.importBatch.deleteMany({ where: { tenantId: tid } });
+    await prisma.domainEventOutbox.deleteMany({ where: { tenantId: tid } });
+    await prisma.domainEvent.deleteMany({ where: { tenantId: tid } });
+    await prisma.auditLog.deleteMany({ where: { tenantId: tid } });
+    await prisma.externalMapping.deleteMany({ where: { tenantId: tid } });
+    await prisma.growthGroup.deleteMany({ where: { tenantId: tid } });
+    await prisma.leadershipUnitMember.deleteMany({ where: { tenantId: tid } });
+    await prisma.leadershipUnit.deleteMany({ where: { tenantId: tid } });
+    await prisma.person.deleteMany({ where: { tenantId: tid } });
+    await prisma.campus.deleteMany({ where: { tenantId: tid } });
+    await prisma.campus.create({ data: { tenantId: tid, name: "Sede" } });
+
+    // pessoas + mappings
+    const mk = async (uuid: string, name: string) => {
+      const p = await prisma.person.create({ data: { tenantId: tid, fullName: name, source: "PROVER_IMPORT" } });
+      await prisma.externalMapping.create({ data: { tenantId: tid, system: "PROVER", externalType: "person", externalId: uuid, internalType: "Person", internalId: p.id } });
+      return p;
+    };
+    await mk("uuid-l1", "Líder Um");
+    await mk("uuid-l2", "Líder Dois");
+    await mk("uuid-sup", "Supervisor Um");
+    await mk("uuid-coord", "Coordenador Um");
+
+    const grupos: ProverGroup[] = [
+      group({ grupo_id: "g1", grupo_nome: "GC Dual", grupo_status: "Ativo" }),
+      group({ grupo_id: "g2", grupo_nome: "GC Sem Líder", grupo_status: "Ativo" }),
+      group({ grupo_id: "g3", grupo_nome: "GC Status Estranho", grupo_status: "Sei la", pessoa_uuid_lider_1: "uuid-l1" }),
+    ];
+    const funcoes: ProverGroupFunction[] = [
+      { grupo_id: "g1", pessoa_uuid: "uuid-l1", funcao: "Líder 1", removido: "0" },
+      { grupo_id: "g1", pessoa_uuid: "uuid-l2", funcao: "Líder 2", removido: "0" },
+      { grupo_id: "g1", pessoa_uuid: "uuid-sup", funcao: "Supervisor 1", removido: "0" },
+      { grupo_id: "g1", pessoa_uuid: "uuid-coord", funcao: "Coordenador(a) 1", removido: "0" },
+    ];
+
+    const usersBefore = await prisma.user.count();
+    const rolesBefore = await prisma.roleAssignment.count();
+
+    const r1 = await runGroupsApply(prisma, { tenantId: tid, fileName: "test.json", grupos, funcoes });
+
+    const gcCount = await prisma.growthGroup.count({ where: { tenantId: tid } });
+    check("GA1. apply cria GrowthGroup (3)", r1.created === 3 && gcCount === 3, `created=${r1.created} count=${gcCount}`);
+    const gmaps = await prisma.externalMapping.count({ where: { tenantId: tid, system: "PROVER", externalType: "growth_group" } });
+    check("GA2. apply cria ExternalMapping growth_group (3)", gmaps === 3, `gmaps=${gmaps}`);
+    const units = await prisma.leadershipUnit.count({ where: { tenantId: tid } });
+    check("GA3. apply cria LeadershipUnit (g1: lead+sup+coord=3 · g3: lead=1 → 4)", units === 4, `units=${units}`);
+    const membersCount = await prisma.leadershipUnitMember.count({ where: { tenantId: tid } });
+    check("GA4. apply cria LeadershipUnitMember (g1:4 + g3:1 = 5)", membersCount === 5, `members=${membersCount}`);
+
+    const g1 = await prisma.growthGroup.findFirstOrThrow({ where: { tenantId: tid, name: "GC Dual" } });
+    const g1Unit = g1.leadershipUnitId ? await prisma.leadershipUnit.findUnique({ where: { id: g1.leadershipUnitId } }) : null;
+    check("GA5. g1 unidade de liderança DUAL", g1Unit?.type === "DUAL", `type=${g1Unit?.type}`);
+    check("GA6. g1 legado leaderId/assistantId preenchidos (Líder 1/2)", !!g1.leaderId && !!g1.assistantId);
+    check("GA7. pastor de área NÃO inventado (areaPastorId/UnitId null)", g1.areaPastorId === null && g1.areaPastorUnitId === null);
+
+    const g2 = await prisma.growthGroup.findFirstOrThrow({ where: { tenantId: tid, name: "GC Sem Líder" } });
+    check("GA8. grupo SEM líder → inativo + sem unidade (não quebra batch)", g2.active === false && g2.leadershipUnitId === null);
+
+    const g3 = await prisma.growthGroup.findFirstOrThrow({ where: { tenantId: tid, name: "GC Status Estranho" } });
+    check("GA9. status desconhecido → inativo", g3.active === false);
+
+    // idempotência
+    const r2 = await runGroupsApply(prisma, { tenantId: tid, fileName: "test.json", grupos, funcoes });
+    const gcCount2 = await prisma.growthGroup.count({ where: { tenantId: tid } });
+    const units2 = await prisma.leadershipUnit.count({ where: { tenantId: tid } });
+    check("GA10. apply 2x NÃO duplica GrowthGroup", gcCount2 === 3 && r2.created === 0 && r2.updated === 3, `count=${gcCount2} created2=${r2.created} updated2=${r2.updated}`);
+    check("GA11. apply 2x NÃO duplica LeadershipUnit", units2 === 4, `units2=${units2}`);
+
+    const usersAfter = await prisma.user.count();
+    const rolesAfter = await prisma.roleAssignment.count();
+    check("GA12. apply grupos NÃO cria User", usersAfter === usersBefore);
+    check("GA13. apply grupos NÃO cria RoleAssignment", rolesAfter === rolesBefore);
+  } catch (e) {
+    console.log(`  ⚠ GA. (skip) DB indisponível: ${e instanceof Error ? e.message : e}`);
+  } finally {
+    await prisma.$disconnect();
+  }
+})();
+
 // ── --confirm APPLY obrigatório (guard do CLI) ────────────────────────────
 try {
   const res = spawnSync(
@@ -427,6 +517,12 @@ try {
   check("C1. prover:apply SEM --confirm falha (exit 2)", res.status === 2, `exit=${res.status}`);
 } catch {
   console.log("  ⚠ C1. (skip) não foi possível spawnar o CLI");
+}
+try {
+  const res = spawnSync("pnpm", ["prover:groups:apply", "--file", "./data/sample/x.zip"], { encoding: "utf8", timeout: 60000 });
+  check("C2. prover:groups:apply SEM --confirm falha (exit 2)", res.status === 2, `exit=${res.status}`);
+} catch {
+  console.log("  ⚠ C2. (skip) não foi possível spawnar o CLI");
 }
 
 console.log(`\nResultado: ${passed} passou, ${failed} falhou.\n`);
