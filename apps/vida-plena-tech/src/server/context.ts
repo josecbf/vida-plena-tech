@@ -97,7 +97,7 @@ export function hasTenantWideScope(ctx: AuthContext): boolean {
 
 /**
  * Conjunto de ids de GC que o usuário enxerga, ou "ALL".
- * GC_LEADER: GCs onde é líder/auxiliar.
+ * GC_LEADER: GCs onde é Líder 1/Líder 2.
  * SUPERVISOR/COORDINATOR/AREA_PASTOR: GCs onde figura na cadeia (por membershipId).
  */
 export async function visibleGcIds(

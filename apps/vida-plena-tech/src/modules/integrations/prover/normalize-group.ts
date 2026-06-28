@@ -10,7 +10,50 @@ import type { ProverGroup } from "./types";
 import { labelKey } from "./normalize";
 
 export type GroupStatus = "ACTIVE" | "INACTIVE" | "UNKNOWN";
-export type LeadershipSuggestion = "INDIVIDUAL" | "DUAL" | "ABSENT";
+export type LeadershipSuggestion = "INDIVIDUAL" | "DUAL" | "TEAM" | "ABSENT";
+
+export type GroupFunctionCategory =
+  | "LEADER_PRIMARY"
+  | "LEADER_SECONDARY"
+  | "LEADER_IN_TRAINING"
+  | "SUPERVISOR_PRIMARY"
+  | "SUPERVISOR_SECONDARY"
+  | "COORDINATOR_PRIMARY"
+  | "COORDINATOR_SECONDARY"
+  | "UNKNOWN";
+
+const FUNCTION_MAP: Record<string, GroupFunctionCategory> = {
+  "LIDER 1": "LEADER_PRIMARY",
+  "LIDER 2": "LEADER_SECONDARY",
+  "LIDER EM TREINAMENTO": "LEADER_IN_TRAINING",
+  "SUPERVISOR 1": "SUPERVISOR_PRIMARY",
+  "SUPERVISOR 2": "SUPERVISOR_SECONDARY",
+  "COORDENADOR(A) 1": "COORDINATOR_PRIMARY",
+  "COORDENADOR(A) 2": "COORDINATOR_SECONDARY",
+};
+
+/** Normaliza o rótulo de função do Prover para uma categoria interna. */
+export function normalizeGroupFunction(funcao?: string | null): GroupFunctionCategory {
+  return FUNCTION_MAP[labelKey(funcao)] ?? "UNKNOWN";
+}
+
+const LEADER_CATEGORIES: GroupFunctionCategory[] = [
+  "LEADER_PRIMARY",
+  "LEADER_SECONDARY",
+  "LEADER_IN_TRAINING",
+];
+
+/** Sugestão de liderança a partir do nº de líderes DISTINTOS (nunca inferência final). */
+export function suggestLeadership(distinctLeaderCount: number): LeadershipSuggestion {
+  if (distinctLeaderCount === 0) return "ABSENT";
+  if (distinctLeaderCount === 1) return "INDIVIDUAL";
+  if (distinctLeaderCount === 2) return "DUAL";
+  return "TEAM";
+}
+
+export function isLeaderCategory(c: GroupFunctionCategory): boolean {
+  return LEADER_CATEGORIES.includes(c);
+}
 
 export type GroupWarning =
   | "UNKNOWN_GROUP_STATUS"
@@ -77,16 +120,13 @@ export function normalizeProverGroup(raw: ProverGroup): NormalizedProverGroup {
   const leaderInTrainingUuid =
     rawInTraining && rawInTraining !== leaderUuid ? rawInTraining : null;
 
-  // sugestão de liderança (NUNCA inferência final)
-  let leadershipSuggestion: LeadershipSuggestion;
-  if (!leaderUuid) {
-    leadershipSuggestion = "ABSENT";
-    warnings.push("LEADERSHIP_ABSENT");
-  } else if (leader2Uuid || leaderInTrainingUuid) {
-    leadershipSuggestion = "DUAL";
-  } else {
-    leadershipSuggestion = "INDIVIDUAL";
-  }
+  // sugestão de liderança SÓ a partir do grupos.json (o engine combina depois
+  // com a hierarquia). Conta líderes DISTINTOS entre os 3 campos de líder.
+  const distinctLeaders = new Set(
+    [leaderUuid, leader2Uuid, leaderInTrainingUuid].filter(Boolean) as string[],
+  );
+  const leadershipSuggestion = suggestLeadership(distinctLeaders.size);
+  if (leadershipSuggestion === "ABSENT") warnings.push("LEADERSHIP_ABSENT");
 
   // nome com "A | B" reforça (apenas) sugestão de casal
   const name = clean(raw.grupo_nome) ?? "";

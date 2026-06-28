@@ -68,6 +68,17 @@ export interface ProverGroup {
   pessoa_uuid_coordenador_a__2?: string | null;
 }
 
+/** Linha de `hierarquia_grupo_funcao.json` (função de uma pessoa num grupo). */
+export interface ProverGroupFunction {
+  grupo_id: string;
+  pessoa_uuid: string;
+  funcao_id?: string;
+  funcao: string; // ex.: "Líder 1", "Supervisor 1", "Coordenador(a) 1"
+  created_at?: string;
+  updated_at?: string;
+  removido?: string; // "0" = ativo, "1" = removido
+}
+
 export interface ProverExportManifest {
   exportedAt: string;
   counts: { people: number };

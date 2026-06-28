@@ -66,6 +66,14 @@ export default async function GcDetailPage({
   });
   if (!gc) notFound();
 
+  // Unidade de liderança (novo modelo) — legado segue em gc.leader/assistant
+  const leadershipUnit = gc.leadershipUnitId
+    ? await prisma.leadershipUnit.findUnique({
+        where: { id: gc.leadershipUnitId },
+        include: { members: { include: { person: true } } },
+      })
+    : null;
+
   // Dashboard do GC
   const lastMeeting = gc.meetings[0];
   const lastPresent =
@@ -108,7 +116,7 @@ export default async function GcDetailPage({
           <Card>
             <CardHeader>
               <CardTitle>Membros do GC</CardTitle>
-              <CardDescription>Liderança: {gc.leader?.fullName ?? "—"}{gc.assistant ? ` · Auxiliar: ${gc.assistant.fullName}` : ""}</CardDescription>
+              <CardDescription>Líder 1: {gc.leader?.fullName ?? "—"}{gc.assistant ? ` · Líder 2: ${gc.assistant.fullName}` : ""}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-1">
               {gc.memberships.length === 0 ? (
@@ -196,6 +204,34 @@ export default async function GcDetailPage({
 
         {/* Lateral: ações */}
         <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Unidade de liderança</CardTitle>
+              <CardDescription>
+                Líder 1: {gc.leader?.fullName ?? "—"}
+                {gc.assistant ? ` · Líder 2: ${gc.assistant.fullName}` : ""} (legado)
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {leadershipUnit ? (
+                <>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">{leadershipUnit.name}</span>
+                    <Badge variant="outline">{leadershipUnit.type}</Badge>
+                  </div>
+                  {leadershipUnit.members.map((m) => (
+                    <div key={m.id} className="flex items-center justify-between text-sm">
+                      <span>{m.person.fullName}</span>
+                      <Badge variant="muted">{leadershipRoleLabel(m.role)}</Badge>
+                    </div>
+                  ))}
+                </>
+              ) : (
+                <p className="text-sm text-mist">Sem unidade de liderança ainda.</p>
+              )}
+            </CardContent>
+          </Card>
+
           {can(ctx, "groups.meeting.create") ? (
             <Card>
               <CardHeader>
@@ -221,4 +257,24 @@ export default async function GcDetailPage({
       </div>
     </div>
   );
+}
+
+// Papel da unidade → rótulo humano. Numa unidade de liderança, PRIMARY/SECONDARY
+// são "Líder 1"/"Líder 2" (regra de produto: nada de "auxiliar").
+function leadershipRoleLabel(role: string): string {
+  switch (role) {
+    case "PRIMARY":
+      return "Líder 1";
+    case "SECONDARY":
+    case "ASSISTANT":
+      return "Líder 2";
+    case "IN_TRAINING":
+      return "Líder em Treinamento";
+    case "SPOUSE":
+      return "Cônjuge";
+    case "TEAM_MEMBER":
+      return "Equipe";
+    default:
+      return role;
+  }
 }

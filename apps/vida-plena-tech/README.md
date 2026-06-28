@@ -239,16 +239,19 @@ pnpm prover:apply --file ./data/export.zip --limit 50 --confirm APPLY
 Idempotente (ExternalMapping → CPF → create). Sem `--confirm APPLY` o comando recusa.
 Nunca cria login/role; membro sem GC não vira oficial; CPF inválido/placeholder não é salvo.
 
-### Grupos — dry-run (Fase 2A)
+### Grupos — dry-run enriquecido (Fase 2A.1)
 
 ```bash
 pnpm prover:groups:dry-run --file ./data/export_prover_2026-06-27.zip
 ```
-Lê `grupos.json`, resolve a liderança (líder/auxiliar/supervisor/coordenador) via
-`ExternalMapping` das **pessoas já importadas** (a Fase 1B apply precisa ter rodado, senão
-a resolução vem vazia — o comando avisa). **Não** cria `GrowthGroup`/`User`/`RoleAssignment`/
-`LeadershipUnit`. Liderança dupla = **sugestão** (`INDIVIDUAL`/`DUAL`/`ABSENT`), nunca inferência.
-Campos ausentes no export real (pastor de área, dia/horário) são marcados como pendência.
+Lê `grupos.json` **e** `hierarquia_grupo_funcao.json` e **cruza** as duas fontes para validar a
+cadeia de liderança antes do apply. Resolve cada pessoa (Líder 1/Líder 2/supervisor/coordenador)
+via `ExternalMapping` das **pessoas já importadas** (a Fase 1B apply precisa ter rodado, senão a
+resolução vem vazia — o comando avisa). **Não** cria `GrowthGroup`/`User`/`RoleAssignment`/
+`LeadershipUnit`. Liderança = **sugestão** (`INDIVIDUAL`/`DUAL`/`TEAM`/`ABSENT`), nunca inferência.
+Detecta divergências (`GROUP_FUNCTION_MISMATCH`), funções removidas/desconhecidas, papéis ausentes
+e pessoas não mapeadas. **Pastor de área e dia/horário não existem no export** → marcados como
+pendência (não inventados). Ao final indica se a base está **pronta ou não para o apply de GC**.
 
 ### Testes das funções puras + DB
 

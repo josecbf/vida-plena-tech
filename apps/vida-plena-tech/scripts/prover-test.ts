@@ -14,9 +14,21 @@ import {
   runPessoasDryRun,
 } from "../src/modules/integrations/prover/dry-run";
 import { runPessoasApply } from "../src/modules/integrations/prover/apply";
-import { normalizeProverGroup } from "../src/modules/integrations/prover/normalize-group";
+import {
+  normalizeProverGroup,
+  normalizeGroupFunction,
+} from "../src/modules/integrations/prover/normalize-group";
 import { runGroupsDryRun } from "../src/modules/integrations/prover/groups-dry-run";
-import type { ProverPerson, ProverGroup } from "../src/modules/integrations/prover/types";
+import {
+  inferUnitType,
+  buildUnitName,
+  functionCategoryToMemberRole,
+} from "../src/modules/integrations/prover/leadership";
+import type {
+  ProverPerson,
+  ProverGroup,
+  ProverGroupFunction,
+} from "../src/modules/integrations/prover/types";
 import { spawnSync } from "node:child_process";
 
 function group(g: Partial<ProverGroup>): ProverGroup {
@@ -292,7 +304,7 @@ check("G2. status Inativo → INACTIVE", normalizeProverGroup(group({ grupo_stat
   const n = normalizeProverGroup(group({ pessoa_uuid_lider_1: null }));
   check("G3. sem líder → ABSENT + LEADERSHIP_ABSENT", n.leadershipSuggestion === "ABSENT" && n.warnings.includes("LEADERSHIP_ABSENT"));
 }
-// G4/G6) líder + auxiliar diferente → DUAL
+// G4/G6) Líder 1 + Líder 2 diferente → DUAL
 {
   const n = normalizeProverGroup(group({ pessoa_uuid_lider_1: "uA", pessoa_uuid_lider_2: "uB", grupo_nome: "A | B" }));
   check("G6. líder + 2º líder distinto → DUAL", n.leadershipSuggestion === "DUAL");
@@ -304,7 +316,27 @@ check("G2. status Inativo → INACTIVE", normalizeProverGroup(group({ grupo_stat
   check("G6c. 2º líder == líder → INDIVIDUAL", n.leadershipSuggestion === "INDIVIDUAL");
 }
 
-// ── GRUPOS — dry-run DB-backed (não cria GC/User/Role) ────────────────────
+// ── LEADERSHIP UNIT — helpers puros ───────────────────────────────────────
+check("L1. inferUnitType(1) → INDIVIDUAL", inferUnitType(1) === "INDIVIDUAL");
+check("L2. inferUnitType(2) → DUAL", inferUnitType(2) === "DUAL");
+check("L3. inferUnitType(3) → TEAM", inferUnitType(3) === "TEAM");
+check("L4. 'Líder 1'→PRIMARY", functionCategoryToMemberRole("LEADER_PRIMARY") === "PRIMARY");
+check("L5. 'Líder 2'→SECONDARY", functionCategoryToMemberRole("LEADER_SECONDARY") === "SECONDARY");
+check("L6. 'Líder em Treinamento'→IN_TRAINING", functionCategoryToMemberRole("LEADER_IN_TRAINING") === "IN_TRAINING");
+check("L7. supervisor→unidade de supervisão (PRIMARY)", functionCategoryToMemberRole("SUPERVISOR_PRIMARY") === "PRIMARY");
+check("L8. coordenador→unidade de coordenação (PRIMARY)", functionCategoryToMemberRole("COORDINATOR_PRIMARY") === "PRIMARY");
+check("L9. buildUnitName 2 → 'A | B'", buildUnitName(["José", "Bruna"]) === "José | Bruna");
+check("L10. buildUnitName 3+ → 'Equipe ...'", buildUnitName(["A", "B", "C"]).startsWith("Equipe "));
+
+// ── GRUPOS — normalização de FUNÇÕES (pura) ───────────────────────────────
+check("GF1. 'Líder 1' → LEADER_PRIMARY", normalizeGroupFunction("Líder 1") === "LEADER_PRIMARY");
+check("GF2. 'Líder 2' → LEADER_SECONDARY", normalizeGroupFunction("Líder 2") === "LEADER_SECONDARY");
+check("GF3. 'Líder em Treinamento' → LEADER_IN_TRAINING", normalizeGroupFunction("Líder em Treinamento") === "LEADER_IN_TRAINING");
+check("GF4. 'Supervisor 1' → SUPERVISOR_PRIMARY", normalizeGroupFunction("Supervisor 1") === "SUPERVISOR_PRIMARY");
+check("GF5. 'Coordenador(a) 1' → COORDINATOR_PRIMARY", normalizeGroupFunction("Coordenador(a) 1") === "COORDINATOR_PRIMARY");
+check("GF6. função inesperada → UNKNOWN", normalizeGroupFunction("Pastor de Rede") === "UNKNOWN");
+
+// ── GRUPOS — dry-run enriquecido DB-backed (não cria GC/User/Role) ─────────
 await (async () => {
   const prisma = new PrismaClient();
   try {
@@ -315,9 +347,12 @@ await (async () => {
     await prisma.importBatchItem.deleteMany({ where: { tenantId: tid } });
     await prisma.importBatch.deleteMany({ where: { tenantId: tid } });
     await prisma.externalMapping.deleteMany({ where: { tenantId: tid } });
+    await prisma.leadershipUnitMember.deleteMany({ where: { tenantId: tid } });
+    await prisma.leadershipUnit.deleteMany({ where: { tenantId: tid } });
+    await prisma.householdMember.deleteMany({ where: { tenantId: tid } });
+    await prisma.household.deleteMany({ where: { tenantId: tid } });
     await prisma.person.deleteMany({ where: { tenantId: tid } });
 
-    // cria 1 pessoa + mapping p/ testar líder mapeado vs não encontrado
     const p = await prisma.person.create({ data: { tenantId: tid, fullName: "Líder Mapeado", source: "PROVER_IMPORT" } });
     await prisma.externalMapping.create({ data: { tenantId: tid, system: "PROVER", externalType: "person", externalId: "uuid-leader", internalType: "Person", internalId: p.id } });
 
@@ -326,17 +361,50 @@ await (async () => {
     const rolesBefore = await prisma.roleAssignment.count();
 
     const grupos: ProverGroup[] = [
-      group({ grupo_id: "g1", grupo_nome: "GC Mapeado", grupo_status: "Ativo", pessoa_uuid_lider_1: "uuid-leader" }),
-      group({ grupo_id: "g2", grupo_nome: "GC Líder Sumido", grupo_status: "Ativo", pessoa_uuid_lider_1: "uuid-inexistente" }),
+      group({ grupo_id: "g1", grupo_nome: "GC Consistente", grupo_status: "Ativo", pessoa_uuid_lider_1: "uuid-leader" }),
+      group({ grupo_id: "g3", grupo_nome: "GC Divergente", grupo_status: "Ativo", pessoa_uuid_lider_1: "uuid-A" }),
+      group({ grupo_id: "g4", grupo_nome: "GC Team", grupo_status: "Ativo", pessoa_uuid_lider_1: "uuid-leader", pessoa_uuid_lider_2: "uuid-B", pessoa_uuid_lider_em_treinamento: "uuid-C" }),
     ];
-    const r = await runGroupsDryRun(prisma, { tenantId: tid, fileName: "test.json", grupos });
+    const funcoes: ProverGroupFunction[] = [
+      { grupo_id: "g1", pessoa_uuid: "uuid-leader", funcao: "Líder 1", removido: "0" },
+      { grupo_id: "g1", pessoa_uuid: "uuid-leader", funcao: "Coordenador(a) 1", removido: "1" }, // removido
+      { grupo_id: "g1", pessoa_uuid: "uuid-strange", funcao: "Função Esquisita", removido: "0" }, // unknown + não mapeado
+      { grupo_id: "g3", pessoa_uuid: "uuid-B", funcao: "Líder 1", removido: "0" }, // diverge de uuid-A
+    ];
+
+    const r = await runGroupsDryRun(prisma, { tenantId: tid, fileName: "test.json", grupos, funcoes });
 
     const gcAfter = await prisma.growthGroup.count({ where: { tenantId: tid } });
     check("G8. dry-run NÃO cria GrowthGroup", gcBefore === gcAfter && gcAfter === 0, `${gcBefore}→${gcAfter}`);
-    check("G4. líder mapeado contabilizado", r.withLeaderMapped === 1, `withLeaderMapped=${r.withLeaderMapped}`);
-    check("G5. líder não encontrado vira warning/contagem", r.leaderNotFound === 1, `leaderNotFound=${r.leaderNotFound}`);
+    check("GH1. linhas hierarquia ativas/removidas", r.hierarchyActive === 3 && r.hierarchyRemoved === 1, `ativas=${r.hierarchyActive} rem=${r.hierarchyRemoved}`);
+    check("GH2. divergência grupos×hierarquia detectada", r.divergentGroups >= 1, `divergentes=${r.divergentGroups}`);
+    check("GH3. função desconhecida detectada", r.unknownFunctionRows >= 1, `unknownFn=${r.unknownFunctionRows}`);
+    check("GH4. pessoas de função não mapeadas detectadas", r.personsNotMapped >= 1, `notMapped=${r.personsNotMapped}`);
+    check("GH5. sugestão TEAM (3 líderes distintos)", r.suggestionTeam >= 1, `team=${r.suggestionTeam}`);
+    check("GH6. pastor de área NÃO disponível (não inventado)", r.areaPastorAvailable === false);
     const items = await prisma.importBatchItem.count({ where: { batchId: r.batchId } });
-    check("G8b. 2 ImportBatchItem criados (dry-run)", items === 2, `items=${items}`);
+    check("G8b. 3 ImportBatchItem criados", items === 3, `items=${items}`);
+
+    // LU1) dry-run PROPÕE unidade no normalizedJson, sem criar LeadershipUnit real
+    const luBefore = await prisma.leadershipUnit.count({ where: { tenantId: tid } });
+    const item = await prisma.importBatchItem.findFirst({ where: { batchId: r.batchId, externalId: "g4" } });
+    const nj = item?.normalizedJson as { proposedLeadershipUnit?: { type?: string; members?: unknown[] } } | null;
+    check("LU1. dry-run propõe proposedLeadershipUnit (TEAM, 3 membros)", nj?.proposedLeadershipUnit?.type === "TEAM" && nj?.proposedLeadershipUnit?.members?.length === 3);
+    const luAfter = await prisma.leadershipUnit.count({ where: { tenantId: tid } });
+    check("LU2. dry-run NÃO cria LeadershipUnit real", luBefore === 0 && luAfter === 0);
+
+    // LU3) permissão NÃO é dada à família: estar em household com líder não cria membership de unidade
+    const leaderP = await prisma.person.findFirstOrThrow({ where: { tenantId: tid, fullName: "Líder Mapeado" } });
+    const spouse = await prisma.person.create({ data: { tenantId: tid, fullName: "Cônjuge", source: "PROVER_IMPORT" } });
+    const hh = await prisma.household.create({ data: { tenantId: tid, name: "Casa Teste" } });
+    await prisma.householdMember.createMany({ data: [
+      { tenantId: tid, householdId: hh.id, personId: leaderP.id, relationship: "SPOUSE" },
+      { tenantId: tid, householdId: hh.id, personId: spouse.id, relationship: "SPOUSE" },
+    ]});
+    const unit = await prisma.leadershipUnit.create({ data: { tenantId: tid, name: "Líder Mapeado", type: "INDIVIDUAL" } });
+    await prisma.leadershipUnitMember.create({ data: { tenantId: tid, leadershipUnitId: unit.id, personId: leaderP.id, role: "PRIMARY" } });
+    const spouseUnits = await prisma.leadershipUnitMember.count({ where: { personId: spouse.id } });
+    check("LU3. cônjuge na MESMA casa NÃO vira membro de unidade automaticamente", spouseUnits === 0);
 
     const usersAfter = await prisma.user.count();
     const rolesAfter = await prisma.roleAssignment.count();

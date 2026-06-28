@@ -70,7 +70,7 @@ Cada fase só roda depois da anterior concluída, porque depende dos `ExternalMa
 | `grupo_id` | `ExternalMapping.externalId` (externalType=`growth_group`) |
 | `grupo_nome` | `GrowthGroup.name` |
 | `grupo_status` | `GrowthGroup.active` |
-| líder / líder auxiliar (UUIDs de pessoa) | liderança (ver §15) — vincular após Pessoas |
+| Líder 1 / Líder 2 (UUIDs de pessoa) | liderança (ver §15) — vincular após Pessoas |
 | endereço/local | `GrowthGroup.location` |
 | supervisor/coordenador/área (UUIDs) | cadeia de escopo (`supervisorId`/`coordinatorId`/`areaPastorId`) |
 
@@ -190,7 +190,7 @@ Cada item aponta o `externalId`, o motivo e a ação sugerida — para decisão 
 Ver [`leadership-unit-plan.md`](leadership-unit-plan.md). Regra segura para a 1ª importação:
 
 - importar **liderança individual primeiro**;
-- líder + líder auxiliar → **sugerir** `LeadershipUnit` (`COUPLE`/`HOUSEHOLD`/`TEAM`) — sem
+- Líder 1 + Líder 2 → **sugerir** `LeadershipUnit` (`DUAL`/`COUPLE`/`HOUSEHOLD`/`TEAM`) — sem
   inferência agressiva; vai para o relatório de revisão;
 - só um líder → `LeadershipUnit` `INDIVIDUAL`;
 - casal detectável (vínculo familiar ou padrão `Nome A | Nome B`) com **alta confiança** →

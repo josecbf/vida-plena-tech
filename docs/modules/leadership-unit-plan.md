@@ -30,13 +30,17 @@ LeadershipUnitMember
   tenantId        String
   leadershipUnitId String
   personId        String           // pessoa real (Core)
-  role            LeadershipMemberRole  // PRIMARY | SPOUSE | ASSISTANT | TEAM_MEMBER
+  role            LeadershipMemberRole  // PRIMARY=Líder 1 | SECONDARY=Líder 2 | IN_TRAINING | SPOUSE | ASSISTANT(legado) | TEAM_MEMBER
   active          Boolean @default(true)
   @@unique([leadershipUnitId, personId])
 
-enum LeadershipUnitType { INDIVIDUAL  COUPLE  HOUSEHOLD  TEAM }
-enum LeadershipMemberRole { PRIMARY  SPOUSE  ASSISTANT  TEAM_MEMBER }
+enum LeadershipUnitType { INDIVIDUAL  DUAL  COUPLE  HOUSEHOLD  TEAM }
+enum LeadershipMemberRole { PRIMARY  SECONDARY  SPOUSE  ASSISTANT  IN_TRAINING  TEAM_MEMBER }
 ```
+
+> **Nomenclatura (regra de produto):** com duas pessoas na liderança, a segunda é **Líder 2**,
+> não "auxiliar". `PRIMARY` = Líder 1, `SECONDARY` = Líder 2. O campo legado
+> `GrowthGroup.assistantId` (antigo "auxiliar") corresponde ao conceito de **Líder 2**.
 
 E os domínios passam a apontar para a unidade (não para uma pessoa):
 
@@ -83,8 +87,8 @@ Ou seja: ação atribuída à **pessoa real** que clicou, com a unidade como con
 1. **Migration aditiva** — criar `LeadershipUnit` + `LeadershipUnitMember` + enums. Nada quebra
    (tabelas novas, vazias).
 2. **Backfill** — para cada `GrowthGroup` atual: criar uma `LeadershipUnit` (`INDIVIDUAL` se só
-   `leaderId`; `COUPLE`/`TEAM` se houver `assistantId`), com membros `PRIMARY` (leader) e
-   `ASSISTANT` (assistant). Popular `GrowthGroup.leadershipUnitId`.
+   `leaderId`; `DUAL`/`TEAM` se houver `assistantId`/Líder 2), com membros `PRIMARY` (Líder 1) e
+   `SECONDARY` (Líder 2 = antigo `assistantId`). Popular `GrowthGroup.leadershipUnitId`.
 3. **Dupla escrita temporária** — manter `leaderId`/`assistantId` e `leadershipUnitId` em sincronia
    por um período (compatibilidade), com a leitura migrando para a unidade.
 4. **Trocar a resolução de escopo** em `server/context.ts` para usar `LeadershipUnitMember`.
@@ -104,8 +108,8 @@ Ou seja: ação atribuída à **pessoa real** que clicou, com a unidade como con
 ## Importação Prover e liderança (resumo — detalhe em `prover-import-plan.md`)
 
 - importar **liderança individual primeiro**;
-- líder + líder auxiliar no Prover → **sugerir** `LeadershipUnit` `COUPLE`/`HOUSEHOLD`/`TEAM`
-  (sem inferência agressiva), para revisão humana;
+- Líder 1 + Líder 2 no Prover → **sugerir** `LeadershipUnit` `DUAL` (ou `COUPLE`/`HOUSEHOLD`/`TEAM`
+  só com sinal confiável), para revisão humana;
 - uma pessoa só → `LeadershipUnit` `INDIVIDUAL`;
 - casal detectável (vínculo familiar / padrão de nome `A | B`) com **alta confiança** → sugerir
   agrupamento; caso contrário, importar individual e gerar relatório;

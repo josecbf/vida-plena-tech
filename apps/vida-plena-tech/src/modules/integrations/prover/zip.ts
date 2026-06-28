@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import AdmZip from "adm-zip";
-import type { ProverPerson, ProverGroup } from "./types";
+import type { ProverPerson, ProverGroup, ProverGroupFunction } from "./types";
 
 // ─────────────────────────────────────────────────────────────────────────
 // LEITURA DO EXPORT Prover (LOCAL, SOMENTE LEITURA)
@@ -87,4 +87,18 @@ export interface LoadedGrupos {
 export function loadProverGroups(filePath: string): LoadedGrupos {
   const { fileName, sourceFileHash, records } = loadEntry<ProverGroup>(filePath, "grupos.json");
   return { fileName, sourceFileHash, grupos: records };
+}
+
+export interface LoadedGroupFunctions {
+  fileName: string;
+  sourceFileHash: string;
+  funcoes: ProverGroupFunction[];
+}
+
+export function loadProverGroupFunctions(filePath: string): LoadedGroupFunctions {
+  const { fileName, sourceFileHash, records } = loadEntry<ProverGroupFunction>(
+    filePath,
+    "hierarquia_grupo_funcao.json",
+  );
+  return { fileName, sourceFileHash, funcoes: records };
 }

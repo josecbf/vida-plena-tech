@@ -15,6 +15,8 @@ import {
   Sex,
   ContactType,
   AttendanceStatus,
+  LeadershipUnitType,
+  LeadershipMemberRole,
 } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
@@ -61,6 +63,8 @@ async function clear() {
   await prisma.domainEventOutbox.deleteMany();
   await prisma.roleAssignment.deleteMany();
   await prisma.tenantMembership.deleteMany();
+  await prisma.leadershipUnitMember.deleteMany();
+  await prisma.leadershipUnit.deleteMany();
   await prisma.growthGroup.deleteMany();
   await prisma.person.deleteMany();
   await prisma.moduleSubscription.deleteMany();
@@ -324,17 +328,45 @@ async function main() {
     { name: "GC Aliança", campus: zonaSul.id, leader: 2, sup: sup2M, weekday: 4, time: "19:30" },
     { name: "GC Restauração", campus: zonaSul.id, leader: 3, sup: sup2M, weekday: 5, time: "20:00" },
   ];
+  // LeadershipUnit (backfill aditivo): unidades de supervisão/coordenação
+  // reusadas pelos GCs; a unidade de liderança é criada por GC no loop.
+  // Os campos legados (leaderId/supervisorId/...) seguem preenchidos.
+  async function createUnit(
+    name: string,
+    type: LeadershipUnitType,
+    members: { personId: string; role: LeadershipMemberRole }[],
+  ) {
+    const u = await prisma.leadershipUnit.create({ data: { tenantId: tenant.id, name, type } });
+    for (const m of members) {
+      await prisma.leadershipUnitMember.create({
+        data: { tenantId: tenant.id, leadershipUnitId: u.id, personId: m.personId, role: m.role },
+      });
+    }
+    return u;
+  }
+  const coordUnit = await createUnit(coordPerson.fullName, "INDIVIDUAL", [{ personId: coordPerson.id, role: "PRIMARY" }]);
+  const sup1Unit = await createUnit(sup1Person.fullName, "INDIVIDUAL", [{ personId: sup1Person.id, role: "PRIMARY" }]);
+  const sup2Unit = await createUnit(sup2Person.fullName, "INDIVIDUAL", [{ personId: sup2Person.id, role: "PRIMARY" }]);
+
   const gcs = [];
   for (const def of gcDefs) {
+    const leaderPerson = leaders[def.leader];
+    const leadUnit = await createUnit(leaderPerson.fullName, "INDIVIDUAL", [{ personId: leaderPerson.id, role: "PRIMARY" }]);
     const gc = await prisma.growthGroup.create({
       data: {
         tenantId: tenant.id,
         campusId: def.campus,
         name: def.name,
+        // campos legados (compatibilidade da demo)
         leaderId: leaders[def.leader].id,
         supervisorId: def.sup.id,
         coordinatorId: coordM.id,
         areaPastorId: areaPastorM.id,
+        // novas unidades de liderança
+        leadershipUnitId: leadUnit.id,
+        supervisionUnitId: def.sup === sup1M ? sup1Unit.id : sup2Unit.id,
+        coordinationUnitId: coordUnit.id,
+        areaPastorUnitId: null, // export real não traz pastor de área
         weekday: def.weekday,
         time: def.time,
         location: "Casa do líder",

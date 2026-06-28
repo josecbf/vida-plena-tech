@@ -373,6 +373,7 @@ model Person {
   membership      TenantMembership?
   attendances     GrowthGroupAttendance[]
   eventRegs       EventRegistration[]
+  leadershipMemberships LeadershipUnitMember[]
 
   // Vínculos familiares (dois lados da relação)
   householdLinksA HouseholdMember[] @relation("PersonA")
@@ -534,12 +535,22 @@ model GrowthGroup {
   campusId     String?
   name         String
 
-  // Cadeia de liderança (define escopo de visibilidade na aplicação)
-  leaderId     String?
-  assistantId  String?
+  // Cadeia de liderança LEGADA (compatibilidade da demo). Mantida; a evolução
+  // é LeadershipUnit (abaixo). NOTA: assistantId é LEGADO e corresponde ao
+  // conceito de "Líder 2" (NÃO "auxiliar") — ver regra de produto/nomenclatura.
+  leaderId     String? // Líder 1 (legado)
+  assistantId  String? // Líder 2 (legado) — antigo "auxiliar"
   supervisorId String? // membershipId do supervisor
   coordinatorId String? // membershipId do coordenador
   areaPastorId String? // membershipId do pastor de área
+
+  // Unidades de liderança (novo modelo). Opcionais e ADITIVOS — os campos
+  // legados acima (leaderId/assistantId/...) seguem como compatibilidade da demo.
+  // Referenciam LeadershipUnit.id em nível de aplicação (sem FK p/ manter simples).
+  leadershipUnitId   String?
+  supervisionUnitId  String?
+  coordinationUnitId String?
+  areaPastorUnitId   String? // pode ficar nulo (export não traz pastor de área)
 
   weekday      Int? // 0=domingo .. 6=sábado
   time         String?
@@ -562,6 +573,64 @@ model GrowthGroup {
   @@index([tenantId])
   @@index([leaderId])
   @@index([supervisorId])
+  @@index([leadershipUnitId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// LEADERSHIP UNIT — liderança por pessoa, dupla/casal/casa ou equipe
+// (ver docs/modules/leadership-unit-plan.md). Permissão continua POR PESSOA:
+// acesso vem de ser LeadershipUnitMember ATIVO, nunca da família/sobrenome.
+// ─────────────────────────────────────────────────────────────────────────
+
+enum LeadershipUnitType {
+  INDIVIDUAL
+  DUAL
+  COUPLE
+  HOUSEHOLD
+  TEAM
+}
+
+enum LeadershipMemberRole {
+  PRIMARY
+  SECONDARY
+  SPOUSE
+  ASSISTANT
+  IN_TRAINING
+  TEAM_MEMBER
+}
+
+model LeadershipUnit {
+  id         String             @id @default(cuid())
+  tenantId   String
+  name       String
+  type       LeadershipUnitType
+  active     Boolean            @default(true)
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+  archivedAt DateTime?
+
+  members LeadershipUnitMember[]
+
+  @@index([tenantId])
+}
+
+model LeadershipUnitMember {
+  id               String               @id @default(cuid())
+  tenantId         String
+  leadershipUnitId String
+  personId         String
+  role             LeadershipMemberRole
+  active           Boolean              @default(true)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  archivedAt       DateTime?
+
+  leadershipUnit LeadershipUnit @relation(fields: [leadershipUnitId], references: [id])
+  person         Person         @relation(fields: [personId], references: [id])
+
+  @@unique([leadershipUnitId, personId])
+  @@index([tenantId])
+  @@index([personId])
 }
 
 /// Histórico de participação em GC — preservado mesmo após saída/transferência.
