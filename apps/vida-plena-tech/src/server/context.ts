@@ -9,6 +9,13 @@ import {
   permissionsForRoles,
   highestRole,
 } from "./rbac";
+import {
+  hasTenantWideScope,
+  gcScopeOrClauses,
+  getActiveLeadershipUnitIdsForPerson,
+  getGrowthGroupScopeForPerson,
+  personHasAccessToGrowthGroup,
+} from "./scope";
 
 // ─────────────────────────────────────────────────────────────────────────
 // CONTEXTO DE REQUISIÇÃO
@@ -90,29 +97,26 @@ export function assertPermission(ctx: AuthContext, permission: Permission) {
 // e não entra no escopo), mas o histórico e os logs permanecem preservados.
 // ─────────────────────────────────────────────────────────────────────────
 
-/** true = vê o tenant inteiro (admin / pastor sênior). */
-export function hasTenantWideScope(ctx: AuthContext): boolean {
-  return ctx.roles.includes("ADMIN") || ctx.roles.includes("SENIOR_PASTOR");
-}
+// Resolução de escopo extraída para ./scope (sem "server-only" → testável).
+// Re-exporta os helpers públicos (mantém imports existentes de "@/server/context").
+export {
+  hasTenantWideScope,
+  getActiveLeadershipUnitIdsForPerson,
+  getGrowthGroupScopeForPerson,
+  personHasAccessToGrowthGroup,
+};
 
 /**
  * Conjunto de ids de GC que o usuário enxerga, ou "ALL".
- * GC_LEADER: GCs onde é Líder 1/Líder 2.
- * SUPERVISOR/COORDINATOR/AREA_PASTOR: GCs onde figura na cadeia (por membershipId).
+ * Considera campos legados E LeadershipUnitMember (Líder 1/2, supervisão, coordenação).
  */
 export async function visibleGcIds(
   ctx: AuthContext,
 ): Promise<"ALL" | Set<string>> {
   if (hasTenantWideScope(ctx)) return "ALL";
 
-  const ors: object[] = [];
-  if (ctx.personId) {
-    ors.push({ leaderId: ctx.personId });
-    ors.push({ assistantId: ctx.personId });
-  }
-  ors.push({ supervisorId: ctx.membershipId });
-  ors.push({ coordinatorId: ctx.membershipId });
-  ors.push({ areaPastorId: ctx.membershipId });
+  const ors = await gcScopeOrClauses(ctx.tenantId, ctx.personId, ctx.membershipId);
+  if (ors.length === 0) return new Set();
 
   const gcs = await prisma.growthGroup.findMany({
     where: { tenantId: ctx.tenantId, archivedAt: null, OR: ors },

@@ -20,6 +20,7 @@ import {
 } from "../src/modules/integrations/prover/normalize-group";
 import { runGroupsDryRun } from "../src/modules/integrations/prover/groups-dry-run";
 import { runGroupsApply } from "../src/modules/integrations/prover/groups-apply";
+import { hasTenantWideScope, getGrowthGroupScopeForPerson, personHasAccessToGrowthGroup } from "../src/server/scope";
 import {
   inferUnitType,
   buildUnitName,
@@ -502,6 +503,74 @@ await (async () => {
     check("GA13. apply grupos NÃO cria RoleAssignment", rolesAfter === rolesBefore);
   } catch (e) {
     console.log(`  ⚠ GA. (skip) DB indisponível: ${e instanceof Error ? e.message : e}`);
+  } finally {
+    await prisma.$disconnect();
+  }
+})();
+
+// ── ESCOPO por LeadershipUnitMember (Fase 2C) ─────────────────────────────
+// Admin / Pastor Sênior continuam vendo tudo (puro).
+check("S7. admin → escopo tenant-wide", hasTenantWideScope({ roles: ["ADMIN"] }) === true);
+check("S8. pastor sênior → tenant-wide; líder GC não", hasTenantWideScope({ roles: ["SENIOR_PASTOR"] }) === true && hasTenantWideScope({ roles: ["GC_LEADER"] }) === false);
+
+await (async () => {
+  const prisma = new PrismaClient();
+  try {
+    const slug = "scope-test";
+    let t = await prisma.tenant.findUnique({ where: { slug } });
+    if (!t) t = await prisma.tenant.create({ data: { slug, name: "Scope Test" } });
+    const tid = t.id;
+    await prisma.leadershipUnitMember.deleteMany({ where: { tenantId: tid } });
+    await prisma.householdMember.deleteMany({ where: { tenantId: tid } });
+    await prisma.household.deleteMany({ where: { tenantId: tid } });
+    await prisma.growthGroup.deleteMany({ where: { tenantId: tid } });
+    await prisma.leadershipUnit.deleteMany({ where: { tenantId: tid } });
+    await prisma.person.deleteMany({ where: { tenantId: tid } });
+
+    const mkP = (name: string) => prisma.person.create({ data: { tenantId: tid, fullName: name } });
+    const l1 = await mkP("Líder 1"); const l2 = await mkP("Líder 2");
+    const sup = await mkP("Supervisor"); const coord = await mkP("Coordenador");
+    const outsider = await mkP("De Fora"); const spouse = await mkP("Cônjuge");
+    const areaP = await mkP("Pastor Área"); const legacyLeader = await mkP("Líder Legado");
+
+    const mkUnit = async (name: string, type: "INDIVIDUAL" | "DUAL", members: { personId: string; role: "PRIMARY" | "SECONDARY" }[]) => {
+      const u = await prisma.leadershipUnit.create({ data: { tenantId: tid, name, type } });
+      for (const m of members) await prisma.leadershipUnitMember.create({ data: { tenantId: tid, leadershipUnitId: u.id, personId: m.personId, role: m.role } });
+      return u;
+    };
+    const leadUnit = await mkUnit("Líder 1 | Líder 2", "DUAL", [{ personId: l1.id, role: "PRIMARY" }, { personId: l2.id, role: "SECONDARY" }]);
+    const supUnit = await mkUnit("Supervisão", "INDIVIDUAL", [{ personId: sup.id, role: "PRIMARY" }]);
+    const coordUnit = await mkUnit("Coordenação", "INDIVIDUAL", [{ personId: coord.id, role: "PRIMARY" }]);
+
+    const gc1 = await prisma.growthGroup.create({ data: { tenantId: tid, name: "GC Unidades", leadershipUnitId: leadUnit.id, supervisionUnitId: supUnit.id, coordinationUnitId: coordUnit.id, areaPastorUnitId: null } });
+    const gc2 = await prisma.growthGroup.create({ data: { tenantId: tid, name: "GC Legado", leaderId: legacyLeader.id } });
+
+    // família: cônjuge na mesma casa do líder, mas FORA da unidade
+    const hh = await prisma.household.create({ data: { tenantId: tid, name: "Casa" } });
+    await prisma.householdMember.createMany({ data: [
+      { tenantId: tid, householdId: hh.id, personId: l1.id, relationship: "SPOUSE" },
+      { tenantId: tid, householdId: hh.id, personId: spouse.id, relationship: "SPOUSE" },
+    ]});
+
+    check("S1. Líder 1 via LeadershipUnitMember acessa GC", await personHasAccessToGrowthGroup(tid, l1.id, gc1.id));
+    check("S2. Líder 2 via LeadershipUnitMember acessa GC", await personHasAccessToGrowthGroup(tid, l2.id, gc1.id));
+    check("S3. pessoa fora da unidade NÃO acessa", (await personHasAccessToGrowthGroup(tid, outsider.id, gc1.id)) === false);
+    check("S4. supervisor via supervisionUnit acessa", await personHasAccessToGrowthGroup(tid, sup.id, gc1.id));
+    check("S5. coordenador via coordinationUnit acessa", await personHasAccessToGrowthGroup(tid, coord.id, gc1.id));
+    check("S6. campo LEGADO (leaderId) ainda funciona", await personHasAccessToGrowthGroup(tid, legacyLeader.id, gc2.id));
+    check("S9. família (mesma casa, fora da unidade) NÃO acessa", (await personHasAccessToGrowthGroup(tid, spouse.id, gc1.id)) === false);
+    check("S10. areaPastorUnitId nulo não quebra (outsider=false)", (await personHasAccessToGrowthGroup(tid, areaP.id, gc1.id)) === false);
+
+    // S11. se areaPastorUnitId existir no futuro, a lógica suporta
+    const areaUnit = await mkUnit("Área", "INDIVIDUAL", [{ personId: areaP.id, role: "PRIMARY" }]);
+    await prisma.growthGroup.update({ where: { id: gc1.id }, data: { areaPastorUnitId: areaUnit.id } });
+    check("S11. areaPastorUnit no futuro → membro acessa", await personHasAccessToGrowthGroup(tid, areaP.id, gc1.id));
+
+    // S12. validação de transferência usa o mesmo escopo (GC no escopo do supervisor)
+    const supScope = await getGrowthGroupScopeForPerson(tid, sup.id);
+    check("S12. escopo de transferência inclui o GC (via unidade)", supScope.has(gc1.id));
+  } catch (e) {
+    console.log(`  ⚠ S. (skip) DB indisponível: ${e instanceof Error ? e.message : e}`);
   } finally {
     await prisma.$disconnect();
   }
