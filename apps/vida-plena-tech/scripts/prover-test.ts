@@ -25,6 +25,7 @@ import { normalizeGcParticipant, normalizeGcVisitor } from "../src/modules/integ
 import { runGcMembershipsDryRun } from "../src/modules/integrations/prover/gc-memberships-dry-run";
 import { buildSanitizationReport, writeSanitizationReport } from "../src/modules/integrations/prover/gc-memberships-report";
 import { analyzePersonMappingReconcile, applyPersonMappingReconcile } from "../src/modules/integrations/prover/person-mapping-reconcile";
+import { analyzeAliasMapping, applyAliasMapping } from "../src/modules/integrations/prover/person-alias-mapping";
 import type { ProverGcParticipant, ProverGcVisitor } from "../src/modules/integrations/prover/types";
 import { existsSync } from "node:fs";
 import nodePath from "node:path";
@@ -828,6 +829,95 @@ await (async () => {
   }
 })();
 
+// ── ALIAS de ExternalMapping p/ UUIDs duplicados do Prover (Fase 3A.3) ────
+await (async () => {
+  const prisma = new PrismaClient();
+  try {
+    const slug = "alias-test";
+    let t = await prisma.tenant.findUnique({ where: { slug } });
+    if (!t) t = await prisma.tenant.create({ data: { slug, name: "Alias Test" } });
+    const tid = t.id;
+    await prisma.auditLog.deleteMany({ where: { tenantId: tid } });
+    await prisma.importBatchItem.deleteMany({ where: { tenantId: tid } });
+    await prisma.importBatch.deleteMany({ where: { tenantId: tid } });
+    await prisma.externalMapping.deleteMany({ where: { tenantId: tid } });
+    await prisma.growthGroupMembership.deleteMany({ where: { tenantId: tid } });
+    await prisma.contactMethod.deleteMany({ where: { tenantId: tid } });
+    await prisma.person.deleteMany({ where: { tenantId: tid } });
+
+    // pPrim: já mapeada a UUID primário; pNoPrimary: sem mapping primário
+    const pPrim = await prisma.person.create({ data: { tenantId: tid, fullName: "Joao Alias", status: "MEMBER" } });
+    await prisma.externalMapping.create({ data: { tenantId: tid, system: "PROVER", externalType: "person", externalId: "uuid-primary", internalType: "Person", internalId: pPrim.id } });
+    const pNoPrimary = await prisma.person.create({ data: { tenantId: tid, fullName: "Maria SemPrimario" } });
+
+    // evidência: ImportBatchItem anterior (SKIP) → targetId
+    const priorBatch = await prisma.importBatch.create({ data: { tenantId: tid, mode: "APPLY", system: "PROVER", status: "COMPLETED" } });
+    await prisma.importBatchItem.create({ data: { tenantId: tid, batchId: priorBatch.id, externalType: "person", externalId: "uuid-secondary", operation: "SKIP", matchStrategy: "NAME_CONTACT_BIRTHDATE", severity: "CONFLICT", targetType: "Person", targetId: pPrim.id, rawJson: {}, status: "SKIPPED" } });
+    await prisma.importBatchItem.create({ data: { tenantId: tid, batchId: priorBatch.id, externalType: "person", externalId: "uuid-noprim", operation: "SKIP", matchStrategy: "NAME_CONTACT_BIRTHDATE", severity: "CONFLICT", targetType: "Person", targetId: pNoPrimary.id, rawJson: {}, status: "SKIPPED" } });
+
+    const pessoas: ProverPerson[] = [
+      { pessoa_uuid: "uuid-primary", pessoa_nome: "Joao Alias", pessoa_cpf: "00000000000" },   // já mapeado → fora do alvo
+      { pessoa_uuid: "uuid-secondary", pessoa_nome: "Joao Alias", pessoa_cpf: "00000000000" }, // ALIAS seguro → pPrim
+      { pessoa_uuid: "uuid-noprim", pessoa_nome: "Maria SemPrimario", pessoa_cpf: "00000000000" }, // alvo sem primário → REVIEW
+      { pessoa_uuid: "uuid-weak", pessoa_nome: "Carlos Weak", pessoa_cpf: "00000000000" },     // sem evidência → REVIEW
+    ];
+    const participantes: ProverGcParticipant[] = pessoas.map((p) => ({ grupo_id: "g1", pessoa_uuid: p.pessoa_uuid, data_entrada: "2020-01-01" }));
+    const visitantes: ProverGcVisitor[] = [];
+
+    const an = await analyzeAliasMapping(prisma, { tenantId: tid, pessoas, participantes, visitantes });
+    const row = (u: string) => an.rows.find((r) => r.pessoaUuid === u);
+
+    check("AL1. evidência SKIP + Person já mapeada → CREATE_ALIAS_MAPPING", row("uuid-secondary")?.recommendedAction === "CREATE_ALIAS_MAPPING" && row("uuid-secondary")?.confidence === "SAFE" && row("uuid-secondary")?.targetPersonId === pPrim.id && row("uuid-secondary")?.primaryProverUuid === "uuid-primary");
+    check("AL9. UUID já mapeado (primário) não vira alvo (não duplica)", row("uuid-primary") === undefined);
+    check("AL10. sem evidência forte → REVIEW_MANUALLY", row("uuid-weak")?.recommendedAction === "REVIEW_MANUALLY" && row("uuid-weak")?.warnings.includes("NO_PRIOR_IMPORT_ITEM") === true);
+    check("AL10b. evidência aponta p/ Person SEM mapping primário → REVIEW_MANUALLY", row("uuid-noprim")?.recommendedAction === "REVIEW_MANUALLY" && row("uuid-noprim")?.warnings.includes("TARGET_HAS_NO_PRIMARY_MAPPING") === true);
+
+    // ── APPLY ──
+    const before = {
+      person: await prisma.person.count({ where: { tenantId: tid } }),
+      map: await prisma.externalMapping.count({ where: { tenantId: tid, system: "PROVER", externalType: "person" } }),
+      user: await prisma.user.count(),
+      role: await prisma.roleAssignment.count(),
+      gcc: await prisma.growthGroupMembership.count({ where: { tenantId: tid } }),
+      pStatus: (await prisma.person.findUniqueOrThrow({ where: { id: pPrim.id } })).status,
+    };
+    const memBefore = await runGcMembershipsDryRun(prisma, { tenantId: tid, fileName: "t", participantes, visitantes });
+
+    const { report } = await applyAliasMapping(prisma, { tenantId: tid, fileName: "alias-test", pessoas, participantes, visitantes });
+
+    const after = {
+      person: await prisma.person.count({ where: { tenantId: tid } }),
+      map: await prisma.externalMapping.count({ where: { tenantId: tid, system: "PROVER", externalType: "person" } }),
+      user: await prisma.user.count(),
+      role: await prisma.roleAssignment.count(),
+      gcc: await prisma.growthGroupMembership.count({ where: { tenantId: tid } }),
+      pStatus: (await prisma.person.findUniqueOrThrow({ where: { id: pPrim.id } })).status,
+    };
+    const memAfter = await runGcMembershipsDryRun(prisma, { tenantId: tid, fileName: "t", participantes, visitantes });
+
+    check("AL2. apply cria SOMENTE ExternalMapping (1 alias)", report.created === 1 && after.map === before.map + 1);
+    check("AL3. apply NÃO cria Person", after.person === before.person);
+    check("AL4. apply NÃO altera status da pessoa", after.pStatus === before.pStatus && after.pStatus === "MEMBER");
+    check("AL5. apply NÃO cria User", after.user === before.user);
+    check("AL6. apply NÃO cria RoleAssignment", after.role === before.role);
+    check("AL7. apply NÃO cria GrowthGroupMembership", after.gcc === before.gcc);
+    const primMaps = await prisma.externalMapping.findMany({ where: { tenantId: tid, externalType: "person", internalId: pPrim.id }, select: { externalId: true } });
+    check("AL8. Person aceita UUID secundário como alias (2 mappings → mesma Person)", primMaps.length === 2 && primMaps.some((m) => m.externalId === "uuid-primary") && primMaps.some((m) => m.externalId === "uuid-secondary"));
+    check("AL8b. AuditLog import_alias_mapping_create + normalizedJson ALIAS", (await prisma.auditLog.count({ where: { tenantId: tid, action: "import_alias_mapping_create" } })) === 1 && !!(await prisma.importBatchItem.findFirst({ where: { tenantId: tid, externalId: "uuid-secondary", operation: "CREATE" } })));
+
+    // ── idempotência: 2ª execução cria 0 ──
+    const { report: report2 } = await applyAliasMapping(prisma, { tenantId: tid, fileName: "alias-test", pessoas, participantes, visitantes });
+    const mapFinal = await prisma.externalMapping.count({ where: { tenantId: tid, system: "PROVER", externalType: "person" } });
+    check("AL11. apply 2x é idempotente (0 criados, contagem estável)", report2.created === 0 && mapFinal === after.map);
+
+    check("AL12. dry-run de memberships reduz PERSON_MAPPING_NOT_FOUND", memAfter.personsNotMapped === memBefore.personsNotMapped - 1);
+  } catch (e) {
+    console.log(`  ⚠ AL. (skip) DB indisponível: ${e instanceof Error ? e.message : e}`);
+  } finally {
+    await prisma.$disconnect();
+  }
+})();
+
 // ── --confirm APPLY obrigatório (guard do CLI) ────────────────────────────
 try {
   const res = spawnSync(
@@ -850,6 +940,12 @@ try {
   check("C3. prover:people:mapping-reconcile:apply SEM --confirm falha (exit 2)", res.status === 2, `exit=${res.status}`);
 } catch {
   console.log("  ⚠ C3. (skip) não foi possível spawnar o CLI");
+}
+try {
+  const res = spawnSync("pnpm", ["prover:people:alias-mapping:apply", "--file", "./data/sample/x.zip"], { encoding: "utf8", timeout: 60000 });
+  check("C4. prover:people:alias-mapping:apply SEM --confirm falha (exit 2)", res.status === 2, `exit=${res.status}`);
+} catch {
+  console.log("  ⚠ C4. (skip) não foi possível spawnar o CLI");
 }
 
 console.log(`\nResultado: ${passed} passou, ${failed} falhou.\n`);

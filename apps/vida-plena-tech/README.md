@@ -325,6 +325,29 @@ O apply é **idempotente** (rodar 2× cria 0 duplicados), cria **somente** `Exte
 registra `AuditLog` (`import_mapping_reconcile`) + `ImportBatch`/`ImportBatchItem`, e **nunca**
 cria/altera `Person`, status eclesiástico, `User`, `RoleAssignment` ou `GrowthGroupMembership`.
 
+### Alias de `ExternalMapping` p/ UUIDs duplicados do Prover (Fase 3A.3)
+
+A Fase 3A.2 concluiu que os `PERSON_MAPPING_NOT_FOUND` são **aliases**: um UUID secundário foi
+`SKIPPED_POSSIBLE_DUPLICATE` e aponta (via `ImportBatchItem` anterior) para uma `Person` que **já
+está mapeada a um UUID primário**. Esta fase cria **apenas** o `ExternalMapping` secundário → mesma
+`Person`. **Não é merge de pessoas** — só ensina o sistema que dois UUIDs do Prover são a mesma
+pessoa interna.
+
+```bash
+pnpm prover:people:alias-mapping:dry-run --file ./data/export_prover_2026-06-27.zip
+pnpm prover:people:alias-mapping:apply   --file ./data/export_prover_2026-06-27.zip --confirm APPLY
+```
+
+Cria o alias **só quando TODOS** os critérios valem: o UUID é um `PERSON_MAPPING_NOT_FOUND`,
+existe em `pessoas.json`, tem `ImportBatchItem` anterior `SKIP` com `targetId` de uma `Person`
+existente, essa `Person` já tem ≥1 `ExternalMapping` Prover (UUID primário), o secundário ainda
+não está mapeado, o nome é compatível e **não há outra `Person` candidata mais segura** (CPF
+válido ou nome+contato divergente). Qualquer critério que falhe → `REVIEW_MANUALLY`. Os metadados
+do alias (`mappingKind:"ALIAS"`, `reason`, `primaryProverUuid`, `sourceImportBatchItemId`,
+`createdBy`) ficam no `ImportBatchItem.normalizedJson` (o schema de `ExternalMapping` não tem campo
+de metadata). Auditoria: `AuditLog` `import_alias_mapping_create`. Idempotente (2× → 0 duplicados);
+**nunca** cria/altera `Person`, status, `User`, `RoleAssignment` ou `GrowthGroupMembership`.
+
 ### Testes das funções puras + DB
 
 ```bash
