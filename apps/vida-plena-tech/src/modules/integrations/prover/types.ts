@@ -79,6 +79,23 @@ export interface ProverGroupFunction {
   removido?: string; // "0" = ativo, "1" = removido
 }
 
+/** Linha de `grupos_participantes.json` (vínculo participante↔GC). */
+export interface ProverGcParticipant {
+  grupo_id: string;
+  pessoa_uuid: string;
+  cargo?: string | null;
+  data_entrada?: string | null;
+  data_saida?: string | null;
+}
+
+/** Linha de `grupos_visitantes.json` (vínculo visitante↔GC). */
+export interface ProverGcVisitor {
+  grupo_id: string;
+  pessoa_uuid: string;
+  data_cadastro?: string | null;
+  data_saida?: string | null;
+}
+
 export interface ProverExportManifest {
   exportedAt: string;
   counts: { people: number };

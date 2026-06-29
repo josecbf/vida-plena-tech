@@ -21,6 +21,9 @@ import {
 import { runGroupsDryRun } from "../src/modules/integrations/prover/groups-dry-run";
 import { runGroupsApply } from "../src/modules/integrations/prover/groups-apply";
 import { hasTenantWideScope, getGrowthGroupScopeForPerson, personHasAccessToGrowthGroup } from "../src/server/scope";
+import { normalizeGcParticipant, normalizeGcVisitor } from "../src/modules/integrations/prover/normalize-gc-membership";
+import { runGcMembershipsDryRun } from "../src/modules/integrations/prover/gc-memberships-dry-run";
+import type { ProverGcParticipant, ProverGcVisitor } from "../src/modules/integrations/prover/types";
 import {
   inferUnitType,
   buildUnitName,
@@ -571,6 +574,80 @@ await (async () => {
     check("S12. escopo de transferência inclui o GC (via unidade)", supScope.has(gc1.id));
   } catch (e) {
     console.log(`  ⚠ S. (skip) DB indisponível: ${e instanceof Error ? e.message : e}`);
+  } finally {
+    await prisma.$disconnect();
+  }
+})();
+
+// ── VÍNCULOS GC — normalização (pura) ─────────────────────────────────────
+check("M1. participante sem data_saida → ativo + PARTICIPANT", (() => { const n = normalizeGcParticipant({ grupo_id: "g", pessoa_uuid: "p", data_entrada: "2023-01-01" }); return n.active === true && n.source === "PARTICIPANT"; })());
+check("M2. participante com data_saida → encerrado", normalizeGcParticipant({ grupo_id: "g", pessoa_uuid: "p", data_entrada: "2023-01-01", data_saida: "2024-01-01" }).active === false);
+check("M3. visitante sem data_saida → ativo + VISITOR", (() => { const n = normalizeGcVisitor({ grupo_id: "g", pessoa_uuid: "p", data_cadastro: "2024-01-01" }); return n.active === true && n.source === "VISITOR"; })());
+
+// ── VÍNCULOS GC — dry-run DB-backed (não cria vínculo) ────────────────────
+await (async () => {
+  const prisma = new PrismaClient();
+  try {
+    const slug = "gc-mem-test";
+    let t = await prisma.tenant.findUnique({ where: { slug } });
+    if (!t) t = await prisma.tenant.create({ data: { slug, name: "GC Mem Test" } });
+    const tid = t.id;
+    await prisma.importBatchItem.deleteMany({ where: { tenantId: tid } });
+    await prisma.importBatch.deleteMany({ where: { tenantId: tid } });
+    await prisma.externalMapping.deleteMany({ where: { tenantId: tid } });
+    await prisma.growthGroupMembership.deleteMany({ where: { tenantId: tid } });
+    await prisma.growthGroup.deleteMany({ where: { tenantId: tid } });
+    await prisma.person.deleteMany({ where: { tenantId: tid } });
+
+    const mkP = async (uuid: string, name: string) => {
+      const p = await prisma.person.create({ data: { tenantId: tid, fullName: name } });
+      await prisma.externalMapping.create({ data: { tenantId: tid, system: "PROVER", externalType: "person", externalId: uuid, internalType: "Person", internalId: p.id } });
+      return p;
+    };
+    const mkG = async (gid: string, name: string) => {
+      const g = await prisma.growthGroup.create({ data: { tenantId: tid, name } });
+      await prisma.externalMapping.create({ data: { tenantId: tid, system: "PROVER", externalType: "growth_group", externalId: gid, internalType: "GrowthGroup", internalId: g.id } });
+      return g;
+    };
+    const pVis = await mkP("uuid-V", "Visitante X");
+    await mkP("uuid-A", "Pessoa A"); await mkP("uuid-B", "Pessoa B");
+    await mkP("uuid-C", "Pessoa C"); await mkP("uuid-D", "Pessoa D");
+    await mkG("gid-1", "GC 1"); await mkG("gid-2", "GC 2");
+
+    const participantes: ProverGcParticipant[] = [
+      { grupo_id: "gid-1", pessoa_uuid: "uuid-A", data_entrada: "2023-01-01" }, // ativo g1
+      { grupo_id: "gid-2", pessoa_uuid: "uuid-A", data_entrada: "2023-02-01" }, // ativo g2 → multi-active
+      { grupo_id: "gid-1", pessoa_uuid: "uuid-B", data_entrada: "2022-01-01", data_saida: "2023-01-01" }, // encerrado
+      { grupo_id: "gid-1", pessoa_uuid: "uuid-UNKNOWN", data_entrada: "2023-01-01" }, // pessoa não mapeada
+      { grupo_id: "gid-UNKNOWN", pessoa_uuid: "uuid-B", data_entrada: "2023-01-01" }, // GC não mapeado
+      { grupo_id: "gid-1", pessoa_uuid: "uuid-C", data_entrada: "2020-01-01", data_saida: "2021-01-01" }, // dup simples #1
+      { grupo_id: "gid-1", pessoa_uuid: "uuid-C", data_entrada: "2020-01-01", data_saida: "2021-01-01" }, // dup simples #2
+      { grupo_id: "gid-2", pessoa_uuid: "uuid-D", data_entrada: "2020-01-01", data_saida: "2021-01-01" }, // dup conflito #1
+      { grupo_id: "gid-2", pessoa_uuid: "uuid-D", data_entrada: "2099-01-01", data_saida: "2099-02-01" }, // dup conflito #2
+    ];
+    const visitantes: ProverGcVisitor[] = [
+      { grupo_id: "gid-1", pessoa_uuid: "uuid-V", data_cadastro: "2024-01-01" }, // visitante ativo
+    ];
+
+    const usersBefore = await prisma.user.count();
+    const rolesBefore = await prisma.roleAssignment.count();
+    const r = await runGcMembershipsDryRun(prisma, { tenantId: tid, fileName: "test", participantes, visitantes });
+
+    check("M0. totais (9 part / 1 vis / 10 links)", r.totalParticipants === 9 && r.totalVisitors === 1 && r.totalLinks === 10);
+    check("M4. pessoa não mapeada detectada", r.personsNotMapped === 1, `notMapped=${r.personsNotMapped}`);
+    check("M5. GC não mapeado detectado", r.gcsNotMapped === 1, `gcNotMapped=${r.gcsNotMapped}`);
+    check("M6. múltiplos GCs ativos detectados (pessoa A)", r.conflictMultipleActiveGcs === 1, `multi=${r.conflictMultipleActiveGcs}`);
+    check("M7. duplicidade simples detectada", r.duplicateSimple === 1, `dupSimple=${r.duplicateSimple}`);
+    check("M8. duplicidade com conflito detectada", r.duplicateConflict === 1, `dupConf=${r.duplicateConflict}`);
+    check("M9-vis. vínculos de visitante contabilizados", r.visitorLinks === 1);
+
+    const gccount = await prisma.growthGroupMembership.count({ where: { tenantId: tid } });
+    check("M10. dry-run NÃO cria GrowthGroupMembership", gccount === 0, `count=${gccount}`);
+    const visPerson = await prisma.person.findUniqueOrThrow({ where: { id: pVis.id } });
+    check("M9. visitante NÃO vira membro (status inalterado)", visPerson.status === "VISITOR");
+    check("M11. dry-run não cria User/Role", (await prisma.user.count()) === usersBefore && (await prisma.roleAssignment.count()) === rolesBefore);
+  } catch (e) {
+    console.log(`  ⚠ M. (skip) DB indisponível: ${e instanceof Error ? e.message : e}`);
   } finally {
     await prisma.$disconnect();
   }

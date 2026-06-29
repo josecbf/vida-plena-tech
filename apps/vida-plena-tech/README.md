@@ -253,10 +253,31 @@ Detecta divergências (`GROUP_FUNCTION_MISMATCH`), funções removidas/desconhec
 e pessoas não mapeadas. **Pastor de área e dia/horário não existem no export** → marcados como
 pendência (não inventados). Ao final indica se a base está **pronta ou não para o apply de GC**.
 
+### Grupos — apply (Fase 2B) — cria/atualiza GCs + LeadershipUnit (exige `--confirm APPLY`)
+
+```bash
+pnpm prover:groups:apply --file ./data/export.zip --limit 50 --confirm APPLY
+```
+Idempotente (ExternalMapping `growth_group`). Cria `GrowthGroup` + `LeadershipUnit`
+(liderança/supervisão/coordenação) + membros, com legado preenchido. **Não** cria User/Role,
+não importa participantes; grupo sem líder → inativo + warning; pastor de área nulo (não inventado).
+
+### Vínculos pessoa↔GC — dry-run (Fase 3A)
+
+```bash
+pnpm prover:gc-memberships:dry-run --file ./data/export_prover_2026-06-27.zip
+```
+Lê `grupos_participantes.json` + `grupos_visitantes.json`, resolve pessoa e GC via
+`ExternalMapping` e analisa os vínculos. **Não** cria `GrowthGroupMembership`, **não** altera
+status de pessoa, **não** promove a `MEMBER` (visitante não vira membro), **não** cria User/Role.
+Detecta conflitos: **múltiplos GCs ativos** por pessoa (`MULTIPLE_ACTIVE_GCS`) e **duplicidade**
+(`DUPLICATE_SIMPLE`/`DUPLICATE_MEMBERSHIP_CONFLICT`); marca `PERSON_MAPPING_NOT_FOUND`/
+`GROWTH_GROUP_MAPPING_NOT_FOUND` quando não resolve. Ativo = sem `data_saida`.
+
 ### Testes das funções puras + DB
 
 ```bash
-pnpm prover:test     # CPF, status×cargo, dedup, apply idempotente, grupos…
+pnpm prover:test     # CPF, status×cargo, dedup, apply idempotente, grupos, escopo, vínculos…
 ```
 
 ### Próximos passos (fora desta rodada)
