@@ -23,7 +23,10 @@ import { runGroupsApply } from "../src/modules/integrations/prover/groups-apply"
 import { hasTenantWideScope, getGrowthGroupScopeForPerson, personHasAccessToGrowthGroup } from "../src/server/scope";
 import { normalizeGcParticipant, normalizeGcVisitor } from "../src/modules/integrations/prover/normalize-gc-membership";
 import { runGcMembershipsDryRun } from "../src/modules/integrations/prover/gc-memberships-dry-run";
+import { buildSanitizationReport, writeSanitizationReport } from "../src/modules/integrations/prover/gc-memberships-report";
 import type { ProverGcParticipant, ProverGcVisitor } from "../src/modules/integrations/prover/types";
+import { existsSync } from "node:fs";
+import nodePath from "node:path";
 import {
   inferUnitType,
   buildUnitName,
@@ -648,6 +651,79 @@ await (async () => {
     check("M11. dry-run não cria User/Role", (await prisma.user.count()) === usersBefore && (await prisma.roleAssignment.count()) === rolesBefore);
   } catch (e) {
     console.log(`  ⚠ M. (skip) DB indisponível: ${e instanceof Error ? e.message : e}`);
+  } finally {
+    await prisma.$disconnect();
+  }
+})();
+
+// ── RELATÓRIO DE SANEAMENTO de vínculos (Fase 3A.1) ───────────────────────
+await (async () => {
+  const prisma = new PrismaClient();
+  try {
+    const slug = "gc-report-test";
+    let t = await prisma.tenant.findUnique({ where: { slug } });
+    if (!t) t = await prisma.tenant.create({ data: { slug, name: "GC Report Test" } });
+    const tid = t.id;
+    await prisma.importBatchItem.deleteMany({ where: { tenantId: tid } });
+    await prisma.importBatch.deleteMany({ where: { tenantId: tid } });
+    await prisma.externalMapping.deleteMany({ where: { tenantId: tid } });
+    await prisma.growthGroupMembership.deleteMany({ where: { tenantId: tid } });
+    await prisma.growthGroup.deleteMany({ where: { tenantId: tid } });
+    await prisma.person.deleteMany({ where: { tenantId: tid } });
+
+    const mkP = async (uuid: string, name: string) => {
+      const p = await prisma.person.create({ data: { tenantId: tid, fullName: name } });
+      await prisma.externalMapping.create({ data: { tenantId: tid, system: "PROVER", externalType: "person", externalId: uuid, internalType: "Person", internalId: p.id } });
+      return p;
+    };
+    const mkG = async (gid: string, name: string) => {
+      const g = await prisma.growthGroup.create({ data: { tenantId: tid, name, active: true } });
+      await prisma.externalMapping.create({ data: { tenantId: tid, system: "PROVER", externalType: "growth_group", externalId: gid, internalType: "GrowthGroup", internalId: g.id } });
+      return g;
+    };
+    const pA = await mkP("uuid-A", "Ana Souza"); const pB = await mkP("uuid-B", "Bruno Lima"); const pC = await mkP("uuid-C", "Carla Dias");
+    await mkG("gid-1", "GC Um"); await mkG("gid-2", "GC Dois");
+
+    const participantes: ProverGcParticipant[] = [
+      { grupo_id: "gid-1", pessoa_uuid: "uuid-A", data_entrada: "2020-01-01" }, // pA ativo g1
+      { grupo_id: "gid-2", pessoa_uuid: "uuid-A", data_entrada: "2021-01-01" }, // pA ativo g2 (datas distintas)
+      { grupo_id: "gid-1", pessoa_uuid: "uuid-B", data_entrada: "2020-01-01" }, // pB participante ativo g1
+      { grupo_id: "gid-1", pessoa_uuid: "uuid-C", data_entrada: "2020-01-01" }, // pC dup ativo
+      { grupo_id: "gid-1", pessoa_uuid: "uuid-C", data_entrada: "2099-01-01", data_saida: "2099-02-01" }, // pC dup encerrado (conflito)
+      { grupo_id: "gid-1", pessoa_uuid: "uuid-ORPHAN", data_entrada: "2020-01-01" }, // órfão
+      { grupo_id: "gid-1", pessoa_uuid: "uuid-FAIL", data_entrada: "2020-01-01" }, // falha de importação
+    ];
+    const visitantes: ProverGcVisitor[] = [
+      { grupo_id: "gid-2", pessoa_uuid: "uuid-B", data_cadastro: "2020-01-01" }, // pB visitante ativo g2
+    ];
+    const pessoasUuids = new Set(["uuid-A", "uuid-B", "uuid-C", "uuid-FAIL"]); // uuid-FAIL existe em pessoas.json
+
+    const before = await prisma.growthGroupMembership.count({ where: { tenantId: tid } });
+    const rep = await buildSanitizationReport(prisma, { tenantId: tid, participantes, visitantes, pessoasUuids });
+
+    const entryA = rep.multipleActiveGcs.find((e) => e.personId === pA.id);
+    check("R1. múltiplos GCs ativos no relatório (pA)", !!entryA && entryA.activeGcs.length === 2);
+    check("R2. sugestão por data mais recente (pA)", entryA?.suggestion === "SUGGEST_KEEP_MOST_RECENT_JOINED_AT", entryA?.suggestion);
+    const entryB = rep.multipleActiveGcs.find((e) => e.personId === pB.id);
+    check("R3. sugestão participante > visitante (pB)", entryB?.suggestion === "SUGGEST_KEEP_PARTICIPANT_OVER_VISITOR", entryB?.suggestion);
+    const dup = rep.duplicateConflicts.find((d) => d.personId === pC.id);
+    check("R4. duplicidade conflitante detalhada (pC, 2 linhas)", !!dup && dup.rows.length === 2);
+    check("R4b. sugestão manter ativo (1 ativo + 1 encerrado)", dup?.suggestion === "SUGGEST_KEEP_ACTIVE", dup?.suggestion);
+    const orphan = rep.unmappedPersons.find((u) => u.pessoaUuid === "uuid-ORPHAN");
+    const fail = rep.unmappedPersons.find((u) => u.pessoaUuid === "uuid-FAIL");
+    check("R5. não mapeado no relatório: órfão vs falha", orphan?.diagnosis === "ORPHAN" && fail?.diagnosis === "IMPORT_FAILURE");
+    check("R5b. summary conta órfãos/falhas", rep.summary.orphanUuids === 1 && rep.summary.importFailureUuids === 1);
+
+    const after = await prisma.growthGroupMembership.count({ where: { tenantId: tid } });
+    check("R6. relatório NÃO cria GrowthGroupMembership", before === after && after === 0);
+    check("R7. relatório NÃO altera pessoa (status default)", (await prisma.person.findUniqueOrThrow({ where: { id: pC.id } })).status === "VISITOR");
+
+    // R8: arquivos FORA do git (sob tmp/)
+    const outDir = nodePath.resolve(process.cwd(), "tmp", "report-test");
+    const paths = writeSanitizationReport(rep, outDir);
+    check("R8. arquivos gerados sob tmp/ (fora do git) e existem", paths.jsonPath.includes(`${nodePath.sep}tmp${nodePath.sep}`) && existsSync(paths.jsonPath) && existsSync(paths.csvPath) && existsSync(paths.summaryPath));
+  } catch (e) {
+    console.log(`  ⚠ R. (skip) DB indisponível: ${e instanceof Error ? e.message : e}`);
   } finally {
     await prisma.$disconnect();
   }

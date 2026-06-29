@@ -274,6 +274,28 @@ Detecta conflitos: **múltiplos GCs ativos** por pessoa (`MULTIPLE_ACTIVE_GCS`) 
 (`DUPLICATE_SIMPLE`/`DUPLICATE_MEMBERSHIP_CONFLICT`); marca `PERSON_MAPPING_NOT_FOUND`/
 `GROWTH_GROUP_MAPPING_NOT_FOUND` quando não resolve. Ativo = sem `data_saida`.
 
+#### Relatório de saneamento (Fase 3A.1) — `--write-report`
+
+```bash
+pnpm prover:gc-memberships:dry-run --file ./data/export_prover_2026-06-27.zip --write-report
+```
+Roda o mesmo dry-run (somente leitura) e, ao final, grava um **relatório acionável** de
+conflitos **FORA do git** em `tmp/prover-reports/` (`tmp/` é gitignored — nada com PII é
+versionado). Três arquivos: `gc-memberships-summary.json` (contagens),
+`gc-memberships-conflicts.json` (detalhe completo) e `gc-memberships-conflicts.csv` (uma linha
+por vínculo). Diagnostica, com **sugestão de resolução** para cada caso:
+- **Múltiplos GCs ativos** por pessoa → `SUGGEST_KEEP_PARTICIPANT_OVER_VISITOR` (se há participante
+  + visitante), `SUGGEST_KEEP_MOST_RECENT_JOINED_AT` (datas de entrada todas distintas) ou
+  `SUGGEST_REVIEW_MANUALLY`.
+- **Duplicidade conflitante** (mesma pessoa/GC/origem com datas divergentes) → `SUGGEST_KEEP_ACTIVE`
+  (exatamente 1 linha ativa) ou `SUGGEST_REVIEW_MANUALLY`. Duplicidade idêntica é ignorada.
+- **Pessoa não mapeada** → distingue `IMPORT_FAILURE` (uuid existe em `pessoas.json`, falha ao
+  importar a pessoa) de `ORPHAN` (uuid ausente de `pessoas.json`, vínculo órfão na origem).
+
+No terminal os exemplos saem **anonimizados** (só primeiro nome + iniciais). O relatório **não**
+cria vínculo, **não** altera pessoa e **não** cria User/Role — `GrowthGroupMembership` permanece
+inalterado.
+
 ### Testes das funções puras + DB
 
 ```bash

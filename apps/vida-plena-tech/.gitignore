@@ -26,3 +26,6 @@ next-env.d.ts
 
 # Exports reais do Prover (PII) — NUNCA commitar
 /data/
+
+# Relatórios de saneamento locais (podem conter PII) — NUNCA commitar
+/tmp/
