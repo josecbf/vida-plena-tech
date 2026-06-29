@@ -296,6 +296,35 @@ No terminal os exemplos saem **anonimizados** (só primeiro nome + iniciais). O 
 cria vínculo, **não** altera pessoa e **não** cria User/Role — `GrowthGroupMembership` permanece
 inalterado.
 
+### Reconciliar `ExternalMapping` ausente de Pessoas (Fase 3A.2)
+
+Pessoas que aparecem em vínculos de GC e existem em `pessoas.json` mas ficaram **sem
+`ExternalMapping` de person** (os `PERSON_MAPPING_NOT_FOUND` da Fase 3A). Diagnostica o motivo
+(via `ImportBatchItem` anterior) e, **só quando há match seguro**, sugere criar **apenas** o
+mapping.
+
+```bash
+# 1) DRY-RUN — analisa e grava relatório FORA do git (tmp/prover-reports/)
+pnpm prover:people:mapping-reconcile:dry-run --file ./data/export_prover_2026-06-27.zip
+# 2) APPLY — cria SOMENTE ExternalMapping dos casos SEGUROS (exige --confirm APPLY)
+pnpm prover:people:mapping-reconcile:apply --file ./data/export_prover_2026-06-27.zip --confirm APPLY
+```
+
+Para cada `pessoa_uuid` classifica **CPF** (`valid`/`invalid`/`placeholder`/`missing`), o
+**motivo provável** (`SKIPPED_POSSIBLE_DUPLICATE`, `DUPLICATE_CPF_CONFLICT`,
+`MISSING_REQUIRED_FIELD`, `IMPORT_FAILED`, `NO_PRIOR_IMPORT_ITEM`), os **candidatos internos** e
+uma **confiança** → **ação**:
+- **SAFE → `CREATE_MAPPING`**: CPF válido com exatamente uma `Person` (não mapeada a outro UUID),
+  ou evidência inequívoca de `ImportBatchItem` anterior (`targetId`), com nome compatível.
+- **POSSIBLE → `REVIEW_MANUALLY`**: único candidato fraco (nome + nascimento + contato) — sugestão,
+  nunca apply automático.
+- **UNSAFE → `REVIEW_MANUALLY`/`SKIP`**: CPF ausente/inválido/placeholder, múltiplos candidatos,
+  candidato já mapeado a outro UUID, nome conflitante, ou nenhuma `Person` interna.
+
+O apply é **idempotente** (rodar 2× cria 0 duplicados), cria **somente** `ExternalMapping`,
+registra `AuditLog` (`import_mapping_reconcile`) + `ImportBatch`/`ImportBatchItem`, e **nunca**
+cria/altera `Person`, status eclesiástico, `User`, `RoleAssignment` ou `GrowthGroupMembership`.
+
 ### Testes das funções puras + DB
 
 ```bash

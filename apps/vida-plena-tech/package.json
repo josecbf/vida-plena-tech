@@ -20,6 +20,8 @@
     "prover:groups:dry-run": "tsx scripts/prover-groups-dry-run.ts",
     "prover:groups:apply": "tsx scripts/prover-groups-apply.ts",
     "prover:gc-memberships:dry-run": "tsx scripts/prover-gc-memberships-dry-run.ts",
+    "prover:people:mapping-reconcile:dry-run": "tsx scripts/prover-people-mapping-reconcile-dry-run.ts",
+    "prover:people:mapping-reconcile:apply": "tsx scripts/prover-people-mapping-reconcile-apply.ts",
     "prover:test": "tsx scripts/prover-test.ts"
   },
   "prisma": {

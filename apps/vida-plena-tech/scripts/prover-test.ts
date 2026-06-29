@@ -24,6 +24,7 @@ import { hasTenantWideScope, getGrowthGroupScopeForPerson, personHasAccessToGrow
 import { normalizeGcParticipant, normalizeGcVisitor } from "../src/modules/integrations/prover/normalize-gc-membership";
 import { runGcMembershipsDryRun } from "../src/modules/integrations/prover/gc-memberships-dry-run";
 import { buildSanitizationReport, writeSanitizationReport } from "../src/modules/integrations/prover/gc-memberships-report";
+import { analyzePersonMappingReconcile, applyPersonMappingReconcile } from "../src/modules/integrations/prover/person-mapping-reconcile";
 import type { ProverGcParticipant, ProverGcVisitor } from "../src/modules/integrations/prover/types";
 import { existsSync } from "node:fs";
 import nodePath from "node:path";
@@ -729,6 +730,104 @@ await (async () => {
   }
 })();
 
+// ── RECONCILIAÇÃO de ExternalMapping de Pessoas (Fase 3A.2) ───────────────
+await (async () => {
+  const prisma = new PrismaClient();
+  try {
+    const slug = "reconcile-test";
+    let t = await prisma.tenant.findUnique({ where: { slug } });
+    if (!t) t = await prisma.tenant.create({ data: { slug, name: "Reconcile Test" } });
+    const tid = t.id;
+    // limpeza idempotente do tenant de teste
+    await prisma.auditLog.deleteMany({ where: { tenantId: tid } });
+    await prisma.importBatchItem.deleteMany({ where: { tenantId: tid } });
+    await prisma.importBatch.deleteMany({ where: { tenantId: tid } });
+    await prisma.externalMapping.deleteMany({ where: { tenantId: tid } });
+    await prisma.growthGroupMembership.deleteMany({ where: { tenantId: tid } });
+    await prisma.contactMethod.deleteMany({ where: { tenantId: tid } });
+    await prisma.person.deleteMany({ where: { tenantId: tid } });
+
+    const CPF_VALID_A = "39053344705"; // válido
+    const CPF_VALID_B = "11144477735"; // válido
+    // pessoas INTERNAS (sem mapping, salvo pZ)
+    const pX = await prisma.person.create({ data: { tenantId: tid, fullName: "Joao Silva", cpf: CPF_VALID_A, status: "VISITOR" } });
+    const pE = await prisma.person.create({ data: { tenantId: tid, fullName: "Maria Souza" } });
+    const pW1 = await prisma.person.create({ data: { tenantId: tid, fullName: "Carlos Lima", birthDate: new Date("1990-05-05") } });
+    const pW2 = await prisma.person.create({ data: { tenantId: tid, fullName: "Carlos Lima", birthDate: new Date("1990-05-05") } });
+    await prisma.contactMethod.create({ data: { tenantId: tid, personId: pW1.id, type: "EMAIL", value: "carlos@x.com" } });
+    await prisma.contactMethod.create({ data: { tenantId: tid, personId: pW2.id, type: "EMAIL", value: "carlos@x.com" } });
+    const pZ = await prisma.person.create({ data: { tenantId: tid, fullName: "Ana Paula", cpf: CPF_VALID_B } });
+    await prisma.externalMapping.create({ data: { tenantId: tid, system: "PROVER", externalType: "person", externalId: "uuid-OTHER", internalType: "Person", internalId: pZ.id } });
+
+    // evidência: ImportBatchItem anterior (SKIP) apontando para pE
+    const priorBatch = await prisma.importBatch.create({ data: { tenantId: tid, mode: "APPLY", system: "PROVER", status: "COMPLETED" } });
+    await prisma.importBatchItem.create({ data: { tenantId: tid, batchId: priorBatch.id, externalType: "person", externalId: "uuid-E", operation: "SKIP", matchStrategy: "NAME_CONTACT_BIRTHDATE", severity: "CONFLICT", targetType: "Person", targetId: pE.id, rawJson: {}, warningsJson: { warnings: ["POSSIBLE_DUPLICATE_REVIEW"] }, status: "SKIPPED" } });
+
+    // pessoas.json (alvo da reconciliação)
+    const pessoas: ProverPerson[] = [
+      { pessoa_uuid: "uuid-CPF", pessoa_nome: "Joao Silva", pessoa_cpf: "390.533.447-05" }, // SAFE via CPF → pX
+      { pessoa_uuid: "uuid-E", pessoa_nome: "Maria Souza" },                                  // SAFE via evidência → pE
+      { pessoa_uuid: "uuid-PLACE", pessoa_nome: "Fulano Place", pessoa_cpf: "00000000000" },  // placeholder → SKIP
+      { pessoa_uuid: "uuid-INV", pessoa_nome: "Beltrano Inv", pessoa_cpf: "12345678901" },    // inválido → SKIP
+      { pessoa_uuid: "uuid-W", pessoa_nome: "Carlos Lima", pessoa_email: "carlos@x.com", pessoa_nascimento: "1990-05-05" }, // 2 candidatos fracos → REVIEW
+      { pessoa_uuid: "uuid-Znew", pessoa_nome: "Ana Paula", pessoa_cpf: "111.444.777-35" },   // pZ já mapeada → REVIEW
+    ];
+    const participantes: ProverGcParticipant[] = pessoas.map((p) => ({ grupo_id: "g1", pessoa_uuid: p.pessoa_uuid, data_entrada: "2020-01-01" }));
+    const visitantes: ProverGcVisitor[] = [];
+
+    const an = await analyzePersonMappingReconcile(prisma, { tenantId: tid, pessoas, participantes, visitantes });
+    const row = (u: string) => an.rows.find((r) => r.pessoaUuid === u)!;
+
+    check("RC1. CPF válido único → CREATE_MAPPING (SAFE, via CPF)", row("uuid-CPF")?.recommendedAction === "CREATE_MAPPING" && row("uuid-CPF")?.confidence === "SAFE" && row("uuid-CPF")?.resolvedVia === "CPF" && row("uuid-CPF")?.targetPersonId === pX.id);
+    check("RC1b. evidência (SKIP anterior) → CREATE_MAPPING via PRIOR_EVIDENCE", row("uuid-E")?.recommendedAction === "CREATE_MAPPING" && row("uuid-E")?.resolvedVia === "PRIOR_EVIDENCE" && row("uuid-E")?.targetPersonId === pE.id && row("uuid-E")?.probableReason === "SKIPPED_POSSIBLE_DUPLICATE");
+    check("RC2. CPF placeholder NÃO cria mapping automático", row("uuid-PLACE")?.recommendedAction !== "CREATE_MAPPING" && row("uuid-PLACE")?.cpfStatus === "placeholder");
+    check("RC3. CPF inválido NÃO cria mapping automático", row("uuid-INV")?.recommendedAction !== "CREATE_MAPPING" && row("uuid-INV")?.cpfStatus === "invalid");
+    check("RC4. múltiplos candidatos internos → REVIEW_MANUALLY", row("uuid-W")?.recommendedAction === "REVIEW_MANUALLY" && row("uuid-W")?.candidates.length === 2);
+    check("RC5. Person já mapeada p/ outro UUID NÃO recebe novo mapping", row("uuid-Znew")?.recommendedAction !== "CREATE_MAPPING" && row("uuid-Znew")?.candidates.some((c) => c.mappedToOtherUuid && c.otherUuid === "uuid-OTHER"));
+
+    // ── APPLY ──
+    const before = {
+      person: await prisma.person.count({ where: { tenantId: tid } }),
+      map: await prisma.externalMapping.count({ where: { tenantId: tid, system: "PROVER", externalType: "person" } }),
+      user: await prisma.user.count(),
+      role: await prisma.roleAssignment.count(),
+      gcc: await prisma.growthGroupMembership.count({ where: { tenantId: tid } }),
+      pXstatus: (await prisma.person.findUniqueOrThrow({ where: { id: pX.id } })).status,
+    };
+    const memBefore = await runGcMembershipsDryRun(prisma, { tenantId: tid, fileName: "t", participantes, visitantes });
+
+    const { report } = await applyPersonMappingReconcile(prisma, { tenantId: tid, fileName: "reconcile-test", pessoas, participantes, visitantes });
+
+    const after = {
+      person: await prisma.person.count({ where: { tenantId: tid } }),
+      map: await prisma.externalMapping.count({ where: { tenantId: tid, system: "PROVER", externalType: "person" } }),
+      user: await prisma.user.count(),
+      role: await prisma.roleAssignment.count(),
+      gcc: await prisma.growthGroupMembership.count({ where: { tenantId: tid } }),
+      pXstatus: (await prisma.person.findUniqueOrThrow({ where: { id: pX.id } })).status,
+    };
+    const memAfter = await runGcMembershipsDryRun(prisma, { tenantId: tid, fileName: "t", participantes, visitantes });
+
+    check("RC6. apply cria SOMENTE ExternalMapping (2 seguros)", report.created === 2 && after.map === before.map + 2);
+    check("RC6b. mappings criados apontam para pX e pE", !!(await prisma.externalMapping.findFirst({ where: { tenantId: tid, externalType: "person", externalId: "uuid-CPF", internalId: pX.id } })) && !!(await prisma.externalMapping.findFirst({ where: { tenantId: tid, externalType: "person", externalId: "uuid-E", internalId: pE.id } })));
+    check("RC7. apply NÃO cria Person", after.person === before.person);
+    check("RC8. apply NÃO altera status nem cria GrowthGroupMembership", after.pXstatus === before.pXstatus && after.gcc === before.gcc);
+    check("RC9. apply NÃO cria User nem RoleAssignment", after.user === before.user && after.role === before.role);
+    check("RC9b. AuditLog import_mapping_reconcile registrado (2)", (await prisma.auditLog.count({ where: { tenantId: tid, action: "import_mapping_reconcile" } })) === 2);
+
+    // ── idempotência: 2ª execução cria 0 ──
+    const { report: report2 } = await applyPersonMappingReconcile(prisma, { tenantId: tid, fileName: "reconcile-test", pessoas, participantes, visitantes });
+    const mapFinal = await prisma.externalMapping.count({ where: { tenantId: tid, system: "PROVER", externalType: "person" } });
+    check("RC10. apply 2x é idempotente (0 criados, contagem estável)", report2.created === 0 && mapFinal === after.map);
+
+    check("RC11. dry-run de memberships melhora (menos PERSON_MAPPING_NOT_FOUND)", memAfter.personsNotMapped === memBefore.personsNotMapped - 2);
+  } catch (e) {
+    console.log(`  ⚠ RC. (skip) DB indisponível: ${e instanceof Error ? e.message : e}`);
+  } finally {
+    await prisma.$disconnect();
+  }
+})();
+
 // ── --confirm APPLY obrigatório (guard do CLI) ────────────────────────────
 try {
   const res = spawnSync(
@@ -745,6 +844,12 @@ try {
   check("C2. prover:groups:apply SEM --confirm falha (exit 2)", res.status === 2, `exit=${res.status}`);
 } catch {
   console.log("  ⚠ C2. (skip) não foi possível spawnar o CLI");
+}
+try {
+  const res = spawnSync("pnpm", ["prover:people:mapping-reconcile:apply", "--file", "./data/sample/x.zip"], { encoding: "utf8", timeout: 60000 });
+  check("C3. prover:people:mapping-reconcile:apply SEM --confirm falha (exit 2)", res.status === 2, `exit=${res.status}`);
+} catch {
+  console.log("  ⚠ C3. (skip) não foi possível spawnar o CLI");
 }
 
 console.log(`\nResultado: ${passed} passou, ${failed} falhou.\n`);
