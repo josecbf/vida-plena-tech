@@ -29,6 +29,7 @@ import { analyzeAliasMapping, applyAliasMapping } from "../src/modules/integrati
 import { runGcMembershipsApply } from "../src/modules/integrations/prover/gc-memberships-apply";
 import { parseGcListParams, buildGcListWhere, gcListQueryString, totalPages, GC_PAGE_SIZE } from "../src/lib/gc-list";
 import { MEMBERSHIP_SOURCE_LABEL } from "../src/lib/labels";
+import { buildConflictReport, flattenConflictReport, filterConflictRows, parseConflictKind } from "../src/modules/integrations/prover/gc-membership-conflicts";
 import type { ProverGcParticipant, ProverGcVisitor } from "../src/modules/integrations/prover/types";
 import { existsSync } from "node:fs";
 import nodePath from "node:path";
@@ -1013,6 +1014,79 @@ await (async () => {
     check("GM12. apply 2x é idempotente (0 criados, contagem estável)", r2.created === 0 && gccFinal === after.gcc);
   } catch (e) {
     console.log(`  ⚠ GM. (skip) DB indisponível: ${e instanceof Error ? e.message : e}`);
+  } finally {
+    await prisma.$disconnect();
+  }
+})();
+
+// ── RELATÓRIO DE PENDÊNCIAS de vínculos de GC (Fase 3B.1) ─────────────────
+await (async () => {
+  const prisma = new PrismaClient();
+  try {
+    const slug = "conflict-test";
+    let t = await prisma.tenant.findUnique({ where: { slug } });
+    if (!t) t = await prisma.tenant.create({ data: { slug, name: "Conflict Test" } });
+    const tid = t.id;
+    await prisma.auditLog.deleteMany({ where: { tenantId: tid } });
+    await prisma.importBatchItem.deleteMany({ where: { tenantId: tid } });
+    await prisma.importBatch.deleteMany({ where: { tenantId: tid } });
+    await prisma.growthGroupMembership.deleteMany({ where: { tenantId: tid } });
+    await prisma.growthGroup.deleteMany({ where: { tenantId: tid } });
+    await prisma.person.deleteMany({ where: { tenantId: tid } });
+
+    const pMA = await prisma.person.create({ data: { tenantId: tid, fullName: "Marina Ativa", status: "REGULAR_ATTENDER" } });
+    const pDUP = await prisma.person.create({ data: { tenantId: tid, fullName: "Duda Duplicada" } });
+    const pIN = await prisma.person.create({ data: { tenantId: tid, fullName: "Ines Inativa" } });
+    const pCand = await prisma.person.create({ data: { tenantId: tid, fullName: "Candidato Possivel" } });
+    const g1 = await prisma.growthGroup.create({ data: { tenantId: tid, name: "GC Alfa", active: true } });
+    const g2 = await prisma.growthGroup.create({ data: { tenantId: tid, name: "GC Beta", active: true } });
+    const gInativo = await prisma.growthGroup.create({ data: { tenantId: tid, name: "GC Inativo", active: false } });
+
+    // membership ATIVO em GC INATIVO (estado vivo) → C
+    await prisma.growthGroupMembership.create({ data: { tenantId: tid, gcId: gInativo.id, personId: pIN.id, leftAt: null, source: "PARTICIPANT" } });
+
+    // lote APPLY com itens SKIP (mimetiza o apply de vínculos)
+    const batch = await prisma.importBatch.create({ data: { tenantId: tid, mode: "APPLY", system: "PROVER", status: "COMPLETED" } });
+    const skipItem = (norm: object, warning: string) =>
+      prisma.importBatchItem.create({ data: { tenantId: tid, batchId: batch.id, externalType: "growth_group_membership", externalId: `${(norm as { groupExternalId?: string }).groupExternalId}:x`, operation: "SKIP", matchStrategy: "COMPOSITE_KEY", severity: "CONFLICT", targetType: "GrowthGroupMembership", normalizedJson: norm, warningsJson: { warnings: [warning] }, rawJson: norm, status: "SKIPPED" } });
+
+    // A: pMA com 2 GCs ativos (datas distintas → KEEP_MOST_RECENT)
+    await skipItem({ personId: pMA.id, growthGroupId: g1.id, personUuid: "uuid-MA", groupExternalId: "gid-1", source: "PARTICIPANT", joinedAt: "2020-01-01", leftAt: null, active: true }, "MULTIPLE_ACTIVE_GCS");
+    await skipItem({ personId: pMA.id, growthGroupId: g2.id, personUuid: "uuid-MA", groupExternalId: "gid-2", source: "PARTICIPANT", joinedAt: "2021-01-01", leftAt: null, active: true }, "MULTIPLE_ACTIVE_GCS");
+    // B: pDUP com 2 linhas divergentes no g1 (1 ativa → KEEP_ACTIVE)
+    await skipItem({ personId: pDUP.id, growthGroupId: g1.id, personUuid: "uuid-DUP", groupExternalId: "gid-1", source: "PARTICIPANT", joinedAt: "2020-01-01", leftAt: null, active: true }, "DUPLICATE_MEMBERSHIP_CONFLICT");
+    await skipItem({ personId: pDUP.id, growthGroupId: g1.id, personUuid: "uuid-DUP", groupExternalId: "gid-1", source: "PARTICIPANT", joinedAt: "2018-01-01", leftAt: "2019-01-01", active: false }, "DUPLICATE_MEMBERSHIP_CONFLICT");
+    // D: uuid ambíguo (personId null) + candidato via SKIP anterior de Pessoas
+    await skipItem({ personId: null, growthGroupId: null, personUuid: "uuid-AMB", groupExternalId: "gid-9", source: "PARTICIPANT", joinedAt: "2020-01-01", leftAt: null, active: true }, "PERSON_MAPPING_NOT_FOUND");
+    await prisma.importBatchItem.create({ data: { tenantId: tid, batchId: batch.id, externalType: "person", externalId: "uuid-AMB", operation: "SKIP", matchStrategy: "NAME_CONTACT_BIRTHDATE", severity: "CONFLICT", targetType: "Person", targetId: pCand.id, rawJson: {}, status: "SKIPPED" } });
+
+    const memBefore = await prisma.growthGroupMembership.count({ where: { tenantId: tid } });
+    const personBefore = await prisma.person.count({ where: { tenantId: tid } });
+    const userBefore = await prisma.user.count();
+    const roleBefore = await prisma.roleAssignment.count();
+
+    const report = await buildConflictReport(prisma, { tenantId: tid });
+
+    const memAfter = await prisma.growthGroupMembership.count({ where: { tenantId: tid } });
+    const personAfter = await prisma.person.count({ where: { tenantId: tid } });
+
+    check("CR1. relatório lista pessoa com múltiplos GCs ativos", report.multipleActiveGcs.length === 1 && report.multipleActiveGcs[0].personId === pMA.id && report.multipleActiveGcs[0].gcs.length === 2);
+    check("CR2. relatório lista duplicidade conflitante", report.duplicateConflicts.length === 1 && report.duplicateConflicts[0].personId === pDUP.id && report.duplicateConflicts[0].rows.length === 2);
+    check("CR3. relatório lista vínculo ativo em GC inativo", report.activeInInactiveGc.length === 1 && report.activeInInactiveGc[0].personId === pIN.id && report.activeInInactiveGc[0].gcActive === false);
+    check("CR4. relatório lista pessoa não mapeada + candidato", report.personMappingNotFound.length === 1 && report.personMappingNotFound[0].pessoaUuid === "uuid-AMB" && report.personMappingNotFound[0].candidates.some((c) => c.personId === pCand.id));
+    check("CR5. sugestões geradas sem aplicar", report.multipleActiveGcs[0].suggestion === "SUGGEST_KEEP_MOST_RECENT_JOINED_AT" && report.duplicateConflicts[0].suggestion === "SUGGEST_KEEP_ACTIVE" && report.activeInInactiveGc[0].suggestion === "SUGGEST_REVIEW_MANUALLY");
+    check("CR6. build NÃO altera banco (membership/person estáveis)", memAfter === memBefore && personAfter === personBefore);
+
+    const rows = flattenConflictReport(report);
+    const rowMA = rows.find((r) => r.type === "MULTIPLE_ACTIVE_GCS");
+    const rowB = rows.find((r) => r.type === "DUPLICATE_MEMBERSHIP_CONFLICT");
+    check("CR7. links pessoa/GC montados (personId/growthGroupId)", rowMA?.personId === pMA.id && rowB?.personId === pDUP.id && rowB?.growthGroupId === g1.id);
+    check("CR8. filtro por tipo funciona", filterConflictRows(rows, { kind: "duplicate", q: "" }).every((r) => r.type === "DUPLICATE_MEMBERSHIP_CONFLICT") && filterConflictRows(rows, { kind: "duplicate", q: "" }).length === 1);
+    check("CR9. busca por nome funciona", filterConflictRows(rows, { kind: "all", q: "Marina" }).length === 1 && filterConflictRows(rows, { kind: "all", q: "Marina" })[0].personName === "Marina Ativa");
+    check("CR9b. parseConflictKind valida", parseConflictKind("duplicate") === "duplicate" && parseConflictKind("xpto") === "all");
+    check("CR10. nenhuma escrita (user/role estáveis)", (await prisma.user.count()) === userBefore && (await prisma.roleAssignment.count()) === roleBefore && report.batchId === batch.id);
+  } catch (e) {
+    console.log(`  ⚠ CR. (skip) DB indisponível: ${e instanceof Error ? e.message : e}`);
   } finally {
     await prisma.$disconnect();
   }
