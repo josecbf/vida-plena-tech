@@ -899,3 +899,58 @@ model ImportBatchItem {
   @@index([tenantId])
   @@index([batchId])
 }
+
+// ── FASE 3B.2 — decisão humana de conflitos de vínculo de GC (rascunho) ──
+enum GcMembershipConflictType {
+  MULTIPLE_ACTIVE_GCS
+  DUPLICATE_MEMBERSHIP_CONFLICT
+  ACTIVE_MEMBERSHIP_IN_INACTIVE_GC
+  PERSON_MAPPING_NOT_FOUND
+}
+
+enum GcMembershipConflictDecision {
+  KEEP_THIS_GC_ACTIVE
+  CLOSE_THIS_MEMBERSHIP
+  IGNORE_DUPLICATE
+  CONSOLIDATE_HISTORY
+  MAP_ALIAS_TO_PERSON
+  REVIEW_LATER
+}
+
+enum GcMembershipConflictResolutionStatus {
+  DRAFT
+  READY_TO_APPLY
+  APPLIED
+  CANCELLED
+}
+
+/// Decisão humana (RASCUNHO/auditável) para um conflito de vínculo de GC.
+/// NÃO aplica efeito real — a aplicação fica para a Fase 3B.3.
+model GcMembershipConflictResolution {
+  id          String                   @id @default(cuid())
+  tenantId    String
+  type        GcMembershipConflictType
+  conflictKey String
+
+  personId         String?
+  growthGroupId    String?
+  proverPersonUuid String?
+
+  decision GcMembershipConflictDecision
+  status   GcMembershipConflictResolutionStatus @default(DRAFT)
+
+  note        String?
+  payloadJson Json?
+
+  decidedByUserId String?
+  decidedAt       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, conflictKey])
+  @@index([tenantId, type])
+  @@index([tenantId, status])
+  @@index([personId])
+  @@index([growthGroupId])
+}

@@ -28,6 +28,7 @@ export interface ConflictGcRef {
   hasActiveMembership: boolean;
 }
 export interface MultiActiveEntry {
+  conflictKey: string;
   personId: string;
   pessoaUuids: string[];
   name: string;
@@ -37,6 +38,7 @@ export interface MultiActiveEntry {
   suggestion: string;
 }
 export interface DupConflictEntry {
+  conflictKey: string;
   personId: string;
   name: string;
   growthGroupId: string;
@@ -47,6 +49,7 @@ export interface DupConflictEntry {
   suggestion: string;
 }
 export interface InactiveGcEntry {
+  conflictKey: string;
   membershipId: string;
   personId: string;
   name: string;
@@ -59,6 +62,7 @@ export interface InactiveGcEntry {
   suggestion: string;
 }
 export interface UnmappedEntry {
+  conflictKey: string;
   pessoaUuid: string;
   grupoExternalId: string;
   gcName: string | null;
@@ -69,6 +73,14 @@ export interface UnmappedEntry {
   candidates: { personId: string; name: string }[];
   suggestion: string;
 }
+
+// ── chave estável por conflito (idempotência das decisões) ────────────────
+export const conflictKeys = {
+  multiActive: (tenantId: string, personId: string) => `multi-active:${tenantId}:${personId}`,
+  duplicate: (tenantId: string, personId: string, gcId: string, source: string) => `duplicate:${tenantId}:${personId}:${gcId}:${source}`,
+  inactiveGc: (tenantId: string, membershipId: string) => `inactive-gc-active-membership:${tenantId}:${membershipId}`,
+  personMappingNotFound: (tenantId: string, uuid: string, groupExternalId: string) => `person-mapping-not-found:${tenantId}:${uuid}:${groupExternalId}`,
+};
 
 export interface ConflictReport {
   batchId: string | null;
@@ -188,6 +200,7 @@ export async function buildConflictReport(
     const gcRefs = items.map((i) => gcRef(i.normalizedJson as NormLink));
     const uuids = [...new Set(items.map((i) => (i.normalizedJson as NormLink).personUuid).filter(Boolean) as string[])];
     multipleActiveGcs.push({
+      conflictKey: conflictKeys.multiActive(tenantId, personId),
       personId, pessoaUuids: uuids, name: pi?.fullName ?? "", status: pi?.status ?? "",
       gcs: gcRefs, reason: "pessoa com >1 GC ativo (PARTICIPANT) — não materializado",
       suggestion: suggestMultiActive(gcRefs),
@@ -213,6 +226,7 @@ export async function buildConflictReport(
     });
     const activeCount = rows.filter((r) => r.active).length;
     duplicateConflicts.push({
+      conflictKey: conflictKeys.duplicate(tenantId, n0.personId ?? "", n0.growthGroupId ?? "", n0.source ?? ""),
       personId: n0.personId ?? "", name: pi?.fullName ?? "", growthGroupId: n0.growthGroupId ?? "",
       gcName: g?.name ?? "", source: n0.source ?? "",
       rows, reason: "linhas da mesma pessoa/GC/origem com datas divergentes",
@@ -226,6 +240,7 @@ export async function buildConflictReport(
     select: { id: true, personId: true, gcId: true, joinedAt: true, source: true, person: { select: { fullName: true } }, gc: { select: { name: true } } },
   });
   const activeInInactiveGc: InactiveGcEntry[] = activeInInactive.map((m) => ({
+    conflictKey: conflictKeys.inactiveGc(tenantId, m.id),
     membershipId: m.id, personId: m.personId, name: m.person.fullName,
     growthGroupId: m.gcId, gcName: m.gc.name, gcActive: false,
     joinedAt: m.joinedAt ? m.joinedAt.toISOString().slice(0, 10) : null, source: m.source,
@@ -247,6 +262,7 @@ export async function buildConflictReport(
     const candPersons = candIds.length ? await prisma.person.findMany({ where: { tenantId, id: { in: candIds } }, select: { id: true, fullName: true } }) : [];
     const g = n.growthGroupId ? gcMap.get(n.growthGroupId) : null;
     personMappingNotFound.push({
+      conflictKey: conflictKeys.personMappingNotFound(tenantId, uuid, n.groupExternalId ?? ""),
       pessoaUuid: uuid, grupoExternalId: n.groupExternalId ?? "", gcName: g?.name ?? null,
       source: n.source ?? "", joinedAt: n.joinedAt ?? null, leftAt: n.leftAt ?? null,
       reason: "UUID secundário sem ExternalMapping (alias com candidato concorrente)",
@@ -275,20 +291,24 @@ export async function buildConflictReport(
 // ── flatten + filtro/busca (PURO — usado pela rota e testes) ──────────────
 export interface ConflictFlatRow {
   type: ConflictType;
+  conflictKey: string;
   personId: string | null;
   personName: string;
   growthGroupId: string | null;
   gcName: string | null;
+  proverPersonUuid: string | null;
   detail: string;
   suggestion: string;
+  /** opções de alvo: A → GCs ativos da pessoa; D → candidatos internos. */
+  targets: { value: string; label: string }[];
 }
 
 export function flattenConflictReport(r: ConflictReport): ConflictFlatRow[] {
   const rows: ConflictFlatRow[] = [];
-  for (const e of r.multipleActiveGcs) rows.push({ type: "MULTIPLE_ACTIVE_GCS", personId: e.personId, personName: e.name, growthGroupId: null, gcName: e.gcs.map((g) => g.gcName).join(" · "), detail: `${e.gcs.length} GCs ativos`, suggestion: e.suggestion });
-  for (const e of r.duplicateConflicts) rows.push({ type: "DUPLICATE_MEMBERSHIP_CONFLICT", personId: e.personId, personName: e.name, growthGroupId: e.growthGroupId, gcName: e.gcName, detail: `${e.rows.length} linhas divergentes`, suggestion: e.suggestion });
-  for (const e of r.activeInInactiveGc) rows.push({ type: "ACTIVE_MEMBERSHIP_IN_INACTIVE_GC", personId: e.personId, personName: e.name, growthGroupId: e.growthGroupId, gcName: e.gcName, detail: "ativo em GC inativo", suggestion: e.suggestion });
-  for (const e of r.personMappingNotFound) rows.push({ type: "PERSON_MAPPING_NOT_FOUND", personId: null, personName: e.pessoaUuid, growthGroupId: null, gcName: e.gcName, detail: `${e.candidates.length} candidato(s)`, suggestion: e.suggestion });
+  for (const e of r.multipleActiveGcs) rows.push({ type: "MULTIPLE_ACTIVE_GCS", conflictKey: e.conflictKey, personId: e.personId, personName: e.name, growthGroupId: null, gcName: e.gcs.map((g) => g.gcName).join(" · "), proverPersonUuid: null, detail: `${e.gcs.length} GCs ativos`, suggestion: e.suggestion, targets: e.gcs.map((g) => ({ value: g.growthGroupId, label: g.gcName })) });
+  for (const e of r.duplicateConflicts) rows.push({ type: "DUPLICATE_MEMBERSHIP_CONFLICT", conflictKey: e.conflictKey, personId: e.personId, personName: e.name, growthGroupId: e.growthGroupId, gcName: e.gcName, proverPersonUuid: null, detail: `${e.rows.length} linhas divergentes`, suggestion: e.suggestion, targets: [] });
+  for (const e of r.activeInInactiveGc) rows.push({ type: "ACTIVE_MEMBERSHIP_IN_INACTIVE_GC", conflictKey: e.conflictKey, personId: e.personId, personName: e.name, growthGroupId: e.growthGroupId, gcName: e.gcName, proverPersonUuid: null, detail: "ativo em GC inativo", suggestion: e.suggestion, targets: [] });
+  for (const e of r.personMappingNotFound) rows.push({ type: "PERSON_MAPPING_NOT_FOUND", conflictKey: e.conflictKey, personId: null, personName: e.pessoaUuid, growthGroupId: null, gcName: e.gcName, proverPersonUuid: e.pessoaUuid, detail: `${e.candidates.length} candidato(s)`, suggestion: e.suggestion, targets: e.candidates.map((c) => ({ value: c.personId, label: c.name })) });
   return rows;
 }
 

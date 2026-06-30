@@ -29,7 +29,9 @@ import { analyzeAliasMapping, applyAliasMapping } from "../src/modules/integrati
 import { runGcMembershipsApply } from "../src/modules/integrations/prover/gc-memberships-apply";
 import { parseGcListParams, buildGcListWhere, gcListQueryString, totalPages, GC_PAGE_SIZE } from "../src/lib/gc-list";
 import { MEMBERSHIP_SOURCE_LABEL } from "../src/lib/labels";
-import { buildConflictReport, flattenConflictReport, filterConflictRows, parseConflictKind } from "../src/modules/integrations/prover/gc-membership-conflicts";
+import { buildConflictReport, flattenConflictReport, filterConflictRows, parseConflictKind, conflictKeys } from "../src/modules/integrations/prover/gc-membership-conflicts";
+import { saveConflictResolution, isDecisionAllowed, ALLOWED_DECISIONS, ResolutionValidationError } from "../src/modules/integrations/prover/conflict-resolutions";
+import { readFileSync as readFileSyncCD } from "node:fs";
 import type { ProverGcParticipant, ProverGcVisitor } from "../src/modules/integrations/prover/types";
 import { existsSync } from "node:fs";
 import nodePath from "node:path";
@@ -1087,6 +1089,72 @@ await (async () => {
     check("CR10. nenhuma escrita (user/role estáveis)", (await prisma.user.count()) === userBefore && (await prisma.roleAssignment.count()) === roleBefore && report.batchId === batch.id);
   } catch (e) {
     console.log(`  ⚠ CR. (skip) DB indisponível: ${e instanceof Error ? e.message : e}`);
+  } finally {
+    await prisma.$disconnect();
+  }
+})();
+
+// ── DECISÃO HUMANA (rascunho) de conflitos de GC (Fase 3B.2) ──────────────
+await (async () => {
+  const prisma = new PrismaClient();
+  try {
+    const slug = "resolution-test";
+    let t = await prisma.tenant.findUnique({ where: { slug } });
+    if (!t) t = await prisma.tenant.create({ data: { slug, name: "Resolution Test" } });
+    const tid = t.id;
+    await prisma.auditLog.deleteMany({ where: { tenantId: tid } });
+    await prisma.gcMembershipConflictResolution.deleteMany({ where: { tenantId: tid } });
+    await prisma.growthGroupMembership.deleteMany({ where: { tenantId: tid } });
+    await prisma.person.deleteMany({ where: { tenantId: tid } });
+
+    const memBefore = await prisma.growthGroupMembership.count({ where: { tenantId: tid } });
+    const personBefore = await prisma.person.count({ where: { tenantId: tid } });
+    const userBefore = await prisma.user.count();
+    const roleBefore = await prisma.roleAssignment.count();
+
+    // CD1-CD4: rascunho para cada tipo
+    const r1 = await saveConflictResolution(prisma, { tenantId: tid, decidedByUserId: null, type: "MULTIPLE_ACTIVE_GCS", conflictKey: conflictKeys.multiActive(tid, "p1"), decision: "KEEP_THIS_GC_ACTIVE", personId: "p1", payload: { target: "gcX" } });
+    check("CD1. cria DRAFT para MULTIPLE_ACTIVE_GCS", r1.created === true && (await prisma.gcMembershipConflictResolution.findFirstOrThrow({ where: { id: r1.id } })).status === "DRAFT");
+    const r2 = await saveConflictResolution(prisma, { tenantId: tid, decidedByUserId: null, type: "DUPLICATE_MEMBERSHIP_CONFLICT", conflictKey: conflictKeys.duplicate(tid, "p2", "g2", "PARTICIPANT"), decision: "CONSOLIDATE_HISTORY", personId: "p2", growthGroupId: "g2" });
+    check("CD2. cria DRAFT para DUPLICATE_MEMBERSHIP_CONFLICT", r2.created === true);
+    const r3 = await saveConflictResolution(prisma, { tenantId: tid, decidedByUserId: null, type: "ACTIVE_MEMBERSHIP_IN_INACTIVE_GC", conflictKey: conflictKeys.inactiveGc(tid, "m3"), decision: "CLOSE_THIS_MEMBERSHIP", growthGroupId: "g3" });
+    check("CD3. cria DRAFT para ACTIVE_MEMBERSHIP_IN_INACTIVE_GC", r3.created === true);
+    const r4 = await saveConflictResolution(prisma, { tenantId: tid, decidedByUserId: null, type: "PERSON_MAPPING_NOT_FOUND", conflictKey: conflictKeys.personMappingNotFound(tid, "uuid-x", "gid-x"), decision: "MAP_ALIAS_TO_PERSON", proverPersonUuid: "uuid-x", payload: { target: "pCand" } });
+    check("CD4. cria DRAFT para PERSON_MAPPING_NOT_FOUND", r4.created === true);
+
+    // CD5/CD6: validação de decisão por tipo
+    check("CD5. decisão permitida por tipo", isDecisionAllowed("MULTIPLE_ACTIVE_GCS", "KEEP_THIS_GC_ACTIVE") && isDecisionAllowed("PERSON_MAPPING_NOT_FOUND", "MAP_ALIAS_TO_PERSON") && !isDecisionAllowed("PERSON_MAPPING_NOT_FOUND", "CONSOLIDATE_HISTORY"));
+    let rejected = false;
+    try { await saveConflictResolution(prisma, { tenantId: tid, decidedByUserId: null, type: "MULTIPLE_ACTIVE_GCS", conflictKey: conflictKeys.multiActive(tid, "p9"), decision: "IGNORE_DUPLICATE" }); }
+    catch (e) { rejected = e instanceof ResolutionValidationError; }
+    check("CD6. rejeita decisão inválida para o tipo", rejected && (await prisma.gcMembershipConflictResolution.count({ where: { tenantId: tid, conflictKey: conflictKeys.multiActive(tid, "p9") } })) === 0);
+
+    // CD7: upsert não duplica
+    const r1b = await saveConflictResolution(prisma, { tenantId: tid, decidedByUserId: null, type: "MULTIPLE_ACTIVE_GCS", conflictKey: conflictKeys.multiActive(tid, "p1"), decision: "CLOSE_THIS_MEMBERSHIP", personId: "p1" });
+    check("CD7. upsert por conflictKey não duplica", r1b.created === false && r1b.id === r1.id && (await prisma.gcMembershipConflictResolution.count({ where: { tenantId: tid, conflictKey: conflictKeys.multiActive(tid, "p1") } })) === 1);
+
+    // CD8: status → READY_TO_APPLY
+    await saveConflictResolution(prisma, { tenantId: tid, decidedByUserId: null, type: "MULTIPLE_ACTIVE_GCS", conflictKey: conflictKeys.multiActive(tid, "p1"), decision: "KEEP_THIS_GC_ACTIVE", status: "READY_TO_APPLY", personId: "p1" });
+    check("CD8. status pode ir para READY_TO_APPLY", (await prisma.gcMembershipConflictResolution.findFirstOrThrow({ where: { id: r1.id } })).status === "READY_TO_APPLY");
+
+    // CD9: a server action exige permissão (estrutural)
+    const actionSrc = readFileSyncCD("src/modules/integrations/conflict-actions.ts", "utf8");
+    check("CD9. server action exige permissão prover.import.manage", actionSrc.includes('assertPermission(ctx, "prover.import.manage")') && actionSrc.includes("requireContext()"));
+
+    // CD10-CD12: nenhum efeito real
+    check("CD10. NÃO altera GrowthGroupMembership", (await prisma.growthGroupMembership.count({ where: { tenantId: tid } })) === memBefore);
+    check("CD11. NÃO altera Person", (await prisma.person.count({ where: { tenantId: tid } })) === personBefore);
+    check("CD12. NÃO cria User/RoleAssignment", (await prisma.user.count()) === userBefore && (await prisma.roleAssignment.count()) === roleBefore);
+
+    // CD13: AuditLog
+    check("CD13. AuditLog conflict_resolution_draft_saved criado", (await prisma.auditLog.count({ where: { tenantId: tid, action: "conflict_resolution_draft_saved" } })) >= 5);
+
+    // CD14: conflictKey estável
+    check("CD14. conflictKey estável e no formato esperado", conflictKeys.multiActive(tid, "p1") === conflictKeys.multiActive(tid, "p1") && conflictKeys.duplicate(tid, "p2", "g2", "PARTICIPANT") === `duplicate:${tid}:p2:g2:PARTICIPANT`);
+
+    check("CDx. ALLOWED_DECISIONS cobre os 4 tipos", Object.keys(ALLOWED_DECISIONS).length === 4);
+  } catch (e) {
+    console.log(`  ⚠ CD. (skip) DB indisponível: ${e instanceof Error ? e.message : e}`);
   } finally {
     await prisma.$disconnect();
   }
