@@ -96,6 +96,41 @@ export interface ProverGcVisitor {
   data_saida?: string | null;
 }
 
+/** Linha de `grupos_encontros.json` (encontro de GC). Campos reais do export. */
+export interface ProverGcMeeting {
+  grupo_id: string;
+  grupo_nome?: string | null;
+  encontro_id: string;
+  tema?: string | null;
+  observacao?: string | null;
+  supervisao?: string | null;
+  local?: string | null;
+  data_inicio?: string | null; // "2026-06-08 20:00:00"
+  data_fim?: string | null;
+  status?: string | null; // agendado | realizado | cancelado
+  oferta?: string | null;
+  num_criancas?: string | null;
+}
+
+/**
+ * Linha de `grupos_encontros_participantes.json` e `grupos_encontros_visitantes.json`
+ * (mesma forma). presenca: "1" presente, "0" ausente, null não registrado.
+ */
+export interface ProverGcMeetingAttendance {
+  grupo_id: string;
+  grupo_nome?: string | null;
+  encontro_id: string;
+  tema?: string | null;
+  data_inicio?: string | null;
+  pessoa_uuid?: string | null;
+  pessoa_nome?: string | null;
+  presenca?: string | null;
+  anotacao?: string | null;
+}
+
+/** `grupos_encontros_visitas.json` — VAZIO neste export; forma não confirmada. */
+export type ProverGcMeetingVisit = Record<string, unknown>;
+
 export interface ProverExportManifest {
   exportedAt: string;
   counts: { people: number };

@@ -8,6 +8,9 @@ import type {
   ProverGroupFunction,
   ProverGcParticipant,
   ProverGcVisitor,
+  ProverGcMeeting,
+  ProverGcMeetingAttendance,
+  ProverGcMeetingVisit,
 } from "./types";
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -117,4 +120,26 @@ export function loadProverGcParticipants(filePath: string): { sourceFileHash: st
 export function loadProverGcVisitors(filePath: string): { sourceFileHash: string; visitantes: ProverGcVisitor[] } {
   const { sourceFileHash, records } = loadEntry<ProverGcVisitor>(filePath, "grupos_visitantes.json");
   return { sourceFileHash, visitantes: records };
+}
+
+// ── Encontros e presenças de GC (Fase 4A) ──────────────────────────────────
+export function loadProverGcMeetings(filePath: string): { sourceFileHash: string; meetings: ProverGcMeeting[] } {
+  const { sourceFileHash, records } = loadEntry<ProverGcMeeting>(filePath, "grupos_encontros.json");
+  return { sourceFileHash, meetings: records };
+}
+
+export function loadProverGcMeetingParticipants(filePath: string): { participants: ProverGcMeetingAttendance[] } {
+  const { records } = loadEntry<ProverGcMeetingAttendance>(filePath, "grupos_encontros_participantes.json");
+  return { participants: records };
+}
+
+export function loadProverGcMeetingVisitors(filePath: string): { visitors: ProverGcMeetingAttendance[] } {
+  const { records } = loadEntry<ProverGcMeetingAttendance>(filePath, "grupos_encontros_visitantes.json");
+  return { visitors: records };
+}
+
+/** `grupos_encontros_visitas.json` — vazio neste export ([]); retorna []. */
+export function loadProverGcMeetingVisits(filePath: string): { visits: ProverGcMeetingVisit[] } {
+  const { records } = loadEntry<ProverGcMeetingVisit>(filePath, "grupos_encontros_visitas.json");
+  return { visits: records };
 }

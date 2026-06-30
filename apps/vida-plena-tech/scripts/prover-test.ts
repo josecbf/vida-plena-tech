@@ -32,6 +32,8 @@ import { MEMBERSHIP_SOURCE_LABEL } from "../src/lib/labels";
 import { buildConflictReport, flattenConflictReport, filterConflictRows, parseConflictKind, conflictKeys } from "../src/modules/integrations/prover/gc-membership-conflicts";
 import { saveConflictResolution, isDecisionAllowed, ALLOWED_DECISIONS, ResolutionValidationError } from "../src/modules/integrations/prover/conflict-resolutions";
 import { planResolutions, applyResolutions } from "../src/modules/integrations/prover/resolution-apply";
+import { runGcMeetingsDryRun } from "../src/modules/integrations/prover/gc-meetings-dry-run";
+import type { ProverGcMeeting, ProverGcMeetingAttendance } from "../src/modules/integrations/prover/types";
 import { readFileSync as readFileSyncCD } from "node:fs";
 import type { ProverGcParticipant, ProverGcVisitor } from "../src/modules/integrations/prover/types";
 import { existsSync } from "node:fs";
@@ -1090,6 +1092,96 @@ await (async () => {
     check("CR10. nenhuma escrita (user/role estáveis)", (await prisma.user.count()) === userBefore && (await prisma.roleAssignment.count()) === roleBefore && report.batchId === batch.id);
   } catch (e) {
     console.log(`  ⚠ CR. (skip) DB indisponível: ${e instanceof Error ? e.message : e}`);
+  } finally {
+    await prisma.$disconnect();
+  }
+})();
+
+// ── DRY-RUN de ENCONTROS e PRESENÇAS de GC (Fase 4A) ──────────────────────
+await (async () => {
+  const prisma = new PrismaClient();
+  try {
+    const slug = "meetings-test";
+    let t = await prisma.tenant.findUnique({ where: { slug } });
+    if (!t) t = await prisma.tenant.create({ data: { slug, name: "Meetings Test" } });
+    const tid = t.id;
+    await prisma.importBatchItem.deleteMany({ where: { tenantId: tid } });
+    await prisma.importBatch.deleteMany({ where: { tenantId: tid } });
+    await prisma.externalMapping.deleteMany({ where: { tenantId: tid } });
+    await prisma.growthGroupMembership.deleteMany({ where: { tenantId: tid } });
+    await prisma.growthGroup.deleteMany({ where: { tenantId: tid } });
+    await prisma.person.deleteMany({ where: { tenantId: tid } });
+
+    const mkP = async (uuid: string, name: string) => {
+      const p = await prisma.person.create({ data: { tenantId: tid, fullName: name, status: "REGULAR_ATTENDER" } });
+      await prisma.externalMapping.create({ data: { tenantId: tid, system: "PROVER", externalType: "person", externalId: uuid, internalType: "Person", internalId: p.id } });
+      return p;
+    };
+    const mkG = async (gid: string, name: string, active: boolean) => {
+      const g = await prisma.growthGroup.create({ data: { tenantId: tid, name, active } });
+      await prisma.externalMapping.create({ data: { tenantId: tid, system: "PROVER", externalType: "growth_group", externalId: gid, internalType: "GrowthGroup", internalId: g.id } });
+      return g;
+    };
+    const pP = await mkP("uuid-P", "P Pessoa"); const pP2 = await mkP("uuid-P2", "P2 Pessoa"); const pP3 = await mkP("uuid-P3", "P3 Pessoa"); const pV = await mkP("uuid-V", "V Visit");
+    const gA = await mkG("gid-A", "GC Ativo", true); const gI = await mkG("gid-INACTIVE", "GC Inativo", false);
+    // pP membership cobre 2020-06-01; pP3 entrou só em 2021 (fora do período); pP2 sem membership
+    await prisma.growthGroupMembership.create({ data: { tenantId: tid, gcId: gA.id, personId: pP.id, joinedAt: new Date("2019-01-01"), leftAt: null, source: "PARTICIPANT" } });
+    await prisma.growthGroupMembership.create({ data: { tenantId: tid, gcId: gA.id, personId: pP3.id, joinedAt: new Date("2021-01-01"), leftAt: null, source: "PARTICIPANT" } });
+
+    const meetings: ProverGcMeeting[] = [
+      { grupo_id: "gid-A", encontro_id: "e1", data_inicio: "2020-06-01 20:00:00", status: "realizado" },
+      { grupo_id: "gid-X", encontro_id: "e2", data_inicio: "2020-06-02 20:00:00", status: "agendado" }, // GC não mapeado
+      { grupo_id: "gid-A", encontro_id: "e3", data_inicio: "2020-06-01 19:00:00", status: "realizado" }, // dup mesmo GC/dia que e1
+      { grupo_id: "gid-INACTIVE", encontro_id: "e4", data_inicio: "2020-07-01 20:00:00", status: "realizado" }, // GC inativo
+    ];
+    const A = (o: Partial<ProverGcMeetingAttendance>): ProverGcMeetingAttendance => ({ grupo_id: "gid-A", encontro_id: "e1", data_inicio: "2020-06-01 20:00:00", ...o });
+    const participants: ProverGcMeetingAttendance[] = [
+      A({ pessoa_uuid: "uuid-P", pessoa_nome: "P", presenca: "1" }),       // resolvido + membership compatível
+      A({ pessoa_uuid: "uuid-UNKNOWN", pessoa_nome: "?", presenca: "1" }), // pessoa não mapeada
+      A({ pessoa_uuid: "uuid-P2", pessoa_nome: "P2", presenca: "1" }),     // sem membership
+      A({ pessoa_uuid: "uuid-P3", pessoa_nome: "P3", presenca: "1" }),     // fora do período
+      A({ pessoa_uuid: "uuid-P", pessoa_nome: "P", presenca: "1" }),       // duplicada
+    ];
+    const visitors: ProverGcMeetingAttendance[] = [
+      A({ pessoa_uuid: "uuid-V", pessoa_nome: "V", presenca: "1" }),          // visitante já mapeado
+      A({ pessoa_uuid: null, pessoa_nome: "Fulano Visita", presenca: "1" }),  // visitante sem uuid
+    ];
+
+    const before = {
+      meeting: await prisma.growthGroupMeeting.count({ where: { tenantId: tid } }),
+      att: await prisma.growthGroupAttendance.count({ where: { tenantId: tid } }),
+      gcc: await prisma.growthGroupMembership.count({ where: { tenantId: tid } }),
+      user: await prisma.user.count(), role: await prisma.roleAssignment.count(),
+    };
+
+    const { report: r } = await runGcMeetingsDryRun(prisma, { tenantId: tid, fileName: "test", meetings, participants, visitors, visits: [] });
+
+    const after = {
+      meeting: await prisma.growthGroupMeeting.count({ where: { tenantId: tid } }),
+      att: await prisma.growthGroupAttendance.count({ where: { tenantId: tid } }),
+      gcc: await prisma.growthGroupMembership.count({ where: { tenantId: tid } }),
+      user: await prisma.user.count(), role: await prisma.roleAssignment.count(),
+    };
+
+    check("MT1. encontro com GC resolvido", r.meetingsGcResolved === 3 && r.meetingsWouldCreate === 3);
+    check("MT2. encontro sem GC resolvido", r.meetingsGcNotFound === 1 && r.meetingsWouldSkip === 1);
+    check("MT3. presença com pessoa resolvida", r.participantPersonResolved === 4);
+    check("MT4. presença sem pessoa resolvida", r.participantPersonNotFound === 1);
+    check("MT5. presença com membership compatível", r.attendanceWithMembership >= 1);
+    check("MT6. presença sem membership", r.attendanceWithoutMembership === 1);
+    check("MT7. presença fora do período do membership", r.attendanceOutsideRange === 1);
+    check("MT8. presença duplicada", r.attendanceDuplicate === 1);
+    check("MT9. encontro duplicado mesmo GC/data", r.meetingsDuplicateSameGcDate === 2);
+    check("MT10. encontro em GC inativo", r.meetingsInInactiveGc === 1);
+    check("MT11. visitante com pessoa_uuid resolvido", r.visitorWithMappedPerson === 1 && r.visitorWouldCreate === 2);
+    check("MT12. visitante sem pessoa_uuid vira warning", r.visitorWithoutUuid === 1);
+    check("MT13. dry-run NÃO cria GrowthGroupMeeting", after.meeting === before.meeting && after.meeting === 0);
+    check("MT14. dry-run NÃO cria presença real", after.att === before.att && after.att === 0);
+    check("MT15. dry-run NÃO altera membership", after.gcc === before.gcc);
+    check("MT16. dry-run NÃO cria User/RoleAssignment", after.user === before.user && after.role === before.role);
+    check("MTx. visitas vazias documentadas", r.visitsRead === 0 && r.visitsSemantics.startsWith("VAZIO"));
+  } catch (e) {
+    console.log(`  ⚠ MT. (skip) DB indisponível: ${e instanceof Error ? e.message : e}`);
   } finally {
     await prisma.$disconnect();
   }

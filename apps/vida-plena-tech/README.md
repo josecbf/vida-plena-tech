@@ -376,6 +376,31 @@ duplicados. Auditoria `AuditLog` `import_membership_create`/`import_membership_u
 `groups`). **Nunca** promove a `MEMBER`, altera status, cria `User`/`RoleAssignment`, nem importa
 encontros/presenças/eventos/ensino.
 
+### Encontros e presenças de GC — dry-run (Fase 4A)
+
+```bash
+pnpm prover:gc-meetings:dry-run --file ./data/export_prover_2026-06-27.zip
+```
+
+Lê os 4 arquivos do export e analisa **sem escrever** `GrowthGroupMeeting`/`GrowthGroupAttendance`
+(só grava `ImportBatch`/`ImportBatchItem` de análise + relatório em `tmp/`):
+
+| Arquivo | Campos reais | Uso |
+|---|---|---|
+| `grupos_encontros.json` | `encontro_id`, `grupo_id`, `data_inicio`/`data_fim`, `tema`, `local`, `status` (`agendado`/`realizado`/`cancelado`), `oferta`, `num_criancas` | encontro (`happened` = `realizado`) |
+| `grupos_encontros_participantes.json` | `encontro_id`, `grupo_id`, `pessoa_uuid`, `pessoa_nome`, `presenca` (`"1"`/`"0"`/`null`), `data_inicio` | presença de membro (`1`→PRESENT, `0`→ABSENT, `null`→não registrado) |
+| `grupos_encontros_visitantes.json` | idem | presença de visitante (`status` VISITOR; não vira membro) |
+| `grupos_encontros_visitas.json` | **vazio (`[]`)** | sem dados; semântica **não assumida** |
+
+Resolve GC por `ExternalMapping` `growth_group` e pessoa por `person`; verifica **membership
+compatível** na data do encontro (`COMPATIBLE`/`OUTSIDE_RANGE`/`WITHOUT_MEMBERSHIP`). Detecta:
+`GROWTH_GROUP_MAPPING_NOT_FOUND`, `PERSON_MAPPING_NOT_FOUND`, `MEETING_DUPLICATE_SAME_GC_DATE`,
+`MEETING_IN_INACTIVE_GC`, `ATTENDANCE_DUPLICATE`, `ATTENDANCE_WITHOUT_MEMBERSHIP`,
+`ATTENDANCE_OUTSIDE_MEMBERSHIP_DATE_RANGE`, `VISITOR_WITH_MAPPED_PERSON`, `VISITOR_WITHOUT_UUID`.
+Operações `WOULD_CREATE`/`WOULD_SKIP`/`FAILED`. **Não** cria encontro/presença real, **não** altera
+membership, **não** cria User/Role. Relatórios (fora do git): `gc-meetings-dry-run-summary.json` e
+`gc-meetings-dry-run-conflicts.csv`.
+
 ### Testes das funções puras + DB
 
 ```bash
