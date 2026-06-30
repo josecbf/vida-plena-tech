@@ -634,6 +634,14 @@ model LeadershipUnitMember {
   @@index([personId])
 }
 
+/// Origem de um vínculo de GC (de onde veio o registro).
+enum GrowthGroupMembershipSource {
+  PARTICIPANT // participante de GC (Prover grupos_participantes)
+  VISITOR // visitante de GC (Prover grupos_visitantes) — NÃO é membro oficial
+  MANUAL // criado dentro da plataforma
+  IMPORTED // importação genérica (origem não distinguida)
+}
+
 /// Histórico de participação em GC — preservado mesmo após saída/transferência.
 model GrowthGroupMembership {
   id        String    @id @default(cuid())
@@ -643,6 +651,7 @@ model GrowthGroupMembership {
   joinedAt  DateTime  @default(now())
   leftAt    DateTime? // null = ativo; preenchido = histórico
   reason    String?
+  source    GrowthGroupMembershipSource @default(MANUAL) // aditivo; default p/ linhas existentes
 
   gc     GrowthGroup @relation(fields: [gcId], references: [id])
   person Person      @relation(fields: [personId], references: [id])

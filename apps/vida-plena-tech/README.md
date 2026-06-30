@@ -348,6 +348,34 @@ do alias (`mappingKind:"ALIAS"`, `reason`, `primaryProverUuid`, `sourceImportBat
 de metadata). Auditoria: `AuditLog` `import_alias_mapping_create`. Idempotente (2× → 0 duplicados);
 **nunca** cria/altera `Person`, status, `User`, `RoleAssignment` ou `GrowthGroupMembership`.
 
+### Vínculos pessoa↔GC — apply conservador (Fase 3B)
+
+Cria `GrowthGroupMembership` real **somente para vínculos seguros**. Conflitos são **PULADOS**
+(`SKIP`), nunca resolvidos automaticamente.
+
+```bash
+pnpm prover:gc-memberships:apply --file ./data/export_prover_2026-06-27.zip --limit 100 --confirm APPLY
+pnpm prover:gc-memberships:apply --file ./data/export_prover_2026-06-27.zip --confirm APPLY   # FULL (só com autorização)
+```
+
+`--confirm APPLY` é obrigatório; `--limit N` aplica só os N primeiros vínculos (os **conflitos são
+calculados sobre o conjunto inteiro**, então um lote limitado ainda pula corretamente). Cria quando
+pessoa **e** GC resolvem por `ExternalMapping` e o vínculo não é conflitante. **Pula com warning**
+(`ImportBatchItem` `SKIP`, não falha): `PERSON_MAPPING_NOT_FOUND`, `GROWTH_GROUP_MAPPING_NOT_FOUND`,
+`MULTIPLE_ACTIVE_GCS` (todos os vínculos **ativos** da pessoa; os históricos dela ainda entram se
+não conflitantes), `DUPLICATE_MEMBERSHIP_CONFLICT` (datas divergentes), `DATE_INCONSISTENCY`.
+
+- **Encerrados** (`data_saida`) → membership histórico (`leftAt` preenchido); não reativa pessoa.
+- **Ativos** → criados só se seguros (1 GC ativo).
+- **Visitantes** → membership `source = VISITOR` (campo novo, enum `GrowthGroupMembershipSource`,
+  migration aditiva); **não** vira `MEMBER`, **não** muda status.
+- **Duplicidade simples** → consolida em 1 vínculo (`DUPLICATE_MEMBERSHIP_SIMPLE`), sem duplicar.
+
+Idempotente via `ExternalMapping` (chave `growth_group_membership` = `grupo:pessoa:source`): 2× → 0
+duplicados. Auditoria `AuditLog` `import_membership_create`/`import_membership_update` (module
+`groups`). **Nunca** promove a `MEMBER`, altera status, cria `User`/`RoleAssignment`, nem importa
+encontros/presenças/eventos/ensino.
+
 ### Testes das funções puras + DB
 
 ```bash

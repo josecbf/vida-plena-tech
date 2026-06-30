@@ -20,6 +20,7 @@
     "prover:groups:dry-run": "tsx scripts/prover-groups-dry-run.ts",
     "prover:groups:apply": "tsx scripts/prover-groups-apply.ts",
     "prover:gc-memberships:dry-run": "tsx scripts/prover-gc-memberships-dry-run.ts",
+    "prover:gc-memberships:apply": "tsx scripts/prover-gc-memberships-apply.ts",
     "prover:people:mapping-reconcile:dry-run": "tsx scripts/prover-people-mapping-reconcile-dry-run.ts",
     "prover:people:mapping-reconcile:apply": "tsx scripts/prover-people-mapping-reconcile-apply.ts",
     "prover:people:alias-mapping:dry-run": "tsx scripts/prover-people-alias-mapping-dry-run.ts",

@@ -26,6 +26,7 @@ import { runGcMembershipsDryRun } from "../src/modules/integrations/prover/gc-me
 import { buildSanitizationReport, writeSanitizationReport } from "../src/modules/integrations/prover/gc-memberships-report";
 import { analyzePersonMappingReconcile, applyPersonMappingReconcile } from "../src/modules/integrations/prover/person-mapping-reconcile";
 import { analyzeAliasMapping, applyAliasMapping } from "../src/modules/integrations/prover/person-alias-mapping";
+import { runGcMembershipsApply } from "../src/modules/integrations/prover/gc-memberships-apply";
 import type { ProverGcParticipant, ProverGcVisitor } from "../src/modules/integrations/prover/types";
 import { existsSync } from "node:fs";
 import nodePath from "node:path";
@@ -918,6 +919,103 @@ await (async () => {
   }
 })();
 
+// ── APPLY conservador de VÍNCULOS pessoa↔GC (Fase 3B) ─────────────────────
+await (async () => {
+  const prisma = new PrismaClient();
+  try {
+    const slug = "gc-apply-test";
+    let t = await prisma.tenant.findUnique({ where: { slug } });
+    if (!t) t = await prisma.tenant.create({ data: { slug, name: "GC Apply Test" } });
+    const tid = t.id;
+    await prisma.auditLog.deleteMany({ where: { tenantId: tid } });
+    await prisma.importBatchItem.deleteMany({ where: { tenantId: tid } });
+    await prisma.importBatch.deleteMany({ where: { tenantId: tid } });
+    await prisma.externalMapping.deleteMany({ where: { tenantId: tid } });
+    await prisma.growthGroupMembership.deleteMany({ where: { tenantId: tid } });
+    await prisma.growthGroupMeeting.deleteMany({ where: { tenantId: tid } });
+    await prisma.growthGroup.deleteMany({ where: { tenantId: tid } });
+    await prisma.person.deleteMany({ where: { tenantId: tid } });
+
+    const mkP = async (uuid: string, name: string) => {
+      const p = await prisma.person.create({ data: { tenantId: tid, fullName: name, status: "VISITOR" } });
+      await prisma.externalMapping.create({ data: { tenantId: tid, system: "PROVER", externalType: "person", externalId: uuid, internalType: "Person", internalId: p.id } });
+      return p;
+    };
+    const mkG = async (gid: string, name: string) => {
+      const g = await prisma.growthGroup.create({ data: { tenantId: tid, name, active: true } });
+      await prisma.externalMapping.create({ data: { tenantId: tid, system: "PROVER", externalType: "growth_group", externalId: gid, internalType: "GrowthGroup", internalId: g.id } });
+      return g;
+    };
+    const pA = await mkP("uuid-A", "Ana"); const pB = await mkP("uuid-B", "Bruno"); const pC = await mkP("uuid-C", "Carla");
+    const pD = await mkP("uuid-D", "Davi"); const pE = await mkP("uuid-E", "Eva"); const pF = await mkP("uuid-F", "Fabio");
+    const g1 = await mkG("gid-1", "GC Um"); const g2 = await mkG("gid-2", "GC Dois");
+    // uuid-PNF: pessoa NÃO mapeada (PERSON_MAPPING_NOT_FOUND)
+
+    const participantes: ProverGcParticipant[] = [
+      { grupo_id: "gid-1", pessoa_uuid: "uuid-A", data_entrada: "2020-01-01" }, // ativo seguro
+      { grupo_id: "gid-1", pessoa_uuid: "uuid-E", data_entrada: "2018-01-01", data_saida: "2019-01-01" }, // histórico
+      { grupo_id: "gid-1", pessoa_uuid: "uuid-B", data_entrada: "2020-01-01" }, // multi-ativo
+      { grupo_id: "gid-2", pessoa_uuid: "uuid-B", data_entrada: "2021-01-01" }, // multi-ativo
+      { grupo_id: "gid-1", pessoa_uuid: "uuid-C", data_entrada: "2020-01-01" }, // dup conflito
+      { grupo_id: "gid-1", pessoa_uuid: "uuid-C", data_entrada: "2021-06-06" }, // dup conflito (datas divergentes)
+      { grupo_id: "gid-1", pessoa_uuid: "uuid-F", data_entrada: "2020-01-01" }, // dup simples
+      { grupo_id: "gid-1", pessoa_uuid: "uuid-F", data_entrada: "2020-01-01" }, // dup simples (idêntico)
+      { grupo_id: "gid-1", pessoa_uuid: "uuid-PNF", data_entrada: "2020-01-01" }, // person não mapeada
+    ];
+    const visitantes: ProverGcVisitor[] = [
+      { grupo_id: "gid-2", pessoa_uuid: "uuid-D", data_cadastro: "2020-01-01" }, // visitante ativo seguro
+    ];
+
+    const before = {
+      person: await prisma.person.count({ where: { tenantId: tid } }),
+      user: await prisma.user.count(), role: await prisma.roleAssignment.count(),
+      meeting: await prisma.growthGroupMeeting.count({ where: { tenantId: tid } }),
+      event: await prisma.event.count({ where: { tenantId: tid } }),
+      statuses: Object.fromEntries((await prisma.person.findMany({ where: { tenantId: tid }, select: { id: true, status: true } })).map((p) => [p.id, p.status])),
+    };
+
+    const r = await runGcMembershipsApply(prisma, { tenantId: tid, fileName: "gc-apply-test", participantes, visitantes });
+
+    const after = {
+      person: await prisma.person.count({ where: { tenantId: tid } }),
+      user: await prisma.user.count(), role: await prisma.roleAssignment.count(),
+      meeting: await prisma.growthGroupMeeting.count({ where: { tenantId: tid } }),
+      event: await prisma.event.count({ where: { tenantId: tid } }),
+      gcc: await prisma.growthGroupMembership.count({ where: { tenantId: tid } }),
+      statuses: Object.fromEntries((await prisma.person.findMany({ where: { tenantId: tid }, select: { id: true, status: true } })).map((p) => [p.id, p.status])),
+    };
+
+    const mShip = (personId: string, gcId: string, source: "PARTICIPANT" | "VISITOR") =>
+      prisma.growthGroupMembership.findFirst({ where: { tenantId: tid, personId, gcId, source } });
+
+    const mA = await mShip(pA.id, g1.id, "PARTICIPANT");
+    check("GM1. cria participante ativo seguro (source PARTICIPANT, ativo)", !!mA && mA.leftAt === null && r.activeCreated >= 1);
+    const mE = await mShip(pE.id, g1.id, "PARTICIPANT");
+    check("GM2. cria histórico seguro (leftAt preenchido)", !!mE && mE.leftAt !== null && r.historicalCreated === 1);
+    const mD = await mShip(pD.id, g2.id, "VISITOR");
+    check("GM3. cria visitante seguro (source VISITOR)", !!mD && r.visitorCreated === 1);
+    check("GM4. visitante NÃO vira MEMBER (status inalterado)", after.statuses[pD.id] === before.statuses[pD.id] && after.statuses[pD.id] !== "MEMBER");
+    check("GM5. pula PERSON_MAPPING_NOT_FOUND", r.personMappingNotFound === 1);
+    check("GM6. pula MULTIPLE_ACTIVE_GCS (sem vínculo p/ Bruno)", r.multipleActiveGcsSkipped === 2 && (await prisma.growthGroupMembership.count({ where: { tenantId: tid, personId: pB.id } })) === 0);
+    check("GM7. pula DUPLICATE_MEMBERSHIP_CONFLICT (sem vínculo p/ Carla)", r.duplicateConflictSkipped === 2 && (await prisma.growthGroupMembership.count({ where: { tenantId: tid, personId: pC.id } })) === 0);
+    check("GM8. consolida duplicidade simples (1 vínculo p/ Fabio)", r.duplicateSimpleConsolidated === 1 && (await prisma.growthGroupMembership.count({ where: { tenantId: tid, personId: pF.id } })) === 1);
+    check("GM9. NÃO cria User", after.user === before.user);
+    check("GM10. NÃO cria RoleAssignment", after.role === before.role);
+    check("GM11. NÃO altera status de pessoa", JSON.stringify(after.statuses) === JSON.stringify(before.statuses) && after.person === before.person);
+    check("GM13. NÃO importa encontros/eventos", after.meeting === before.meeting && after.meeting === 0 && after.event === before.event && after.event === 0);
+    check("GMx. AuditLog import_membership_create por criado", (await prisma.auditLog.count({ where: { tenantId: tid, action: "import_membership_create" } })) === r.created);
+
+    // ── idempotência: 2ª execução cria 0 ──
+    const r2 = await runGcMembershipsApply(prisma, { tenantId: tid, fileName: "gc-apply-test", participantes, visitantes });
+    const gccFinal = await prisma.growthGroupMembership.count({ where: { tenantId: tid } });
+    check("GM12. apply 2x é idempotente (0 criados, contagem estável)", r2.created === 0 && gccFinal === after.gcc);
+  } catch (e) {
+    console.log(`  ⚠ GM. (skip) DB indisponível: ${e instanceof Error ? e.message : e}`);
+  } finally {
+    await prisma.$disconnect();
+  }
+})();
+
 // ── --confirm APPLY obrigatório (guard do CLI) ────────────────────────────
 try {
   const res = spawnSync(
@@ -946,6 +1044,12 @@ try {
   check("C4. prover:people:alias-mapping:apply SEM --confirm falha (exit 2)", res.status === 2, `exit=${res.status}`);
 } catch {
   console.log("  ⚠ C4. (skip) não foi possível spawnar o CLI");
+}
+try {
+  const res = spawnSync("pnpm", ["prover:gc-memberships:apply", "--file", "./data/sample/x.zip"], { encoding: "utf8", timeout: 60000 });
+  check("C5. prover:gc-memberships:apply SEM --confirm falha (exit 2)", res.status === 2, `exit=${res.status}`);
+} catch {
+  console.log("  ⚠ C5. (skip) não foi possível spawnar o CLI");
 }
 
 console.log(`\nResultado: ${passed} passou, ${failed} falhou.\n`);
