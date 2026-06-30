@@ -945,6 +945,12 @@ model GcMembershipConflictResolution {
   decidedByUserId String?
   decidedAt       DateTime?
 
+  // Fase 3B.3 — aplicação controlada (aditivo)
+  appliedAt       DateTime?
+  appliedByUserId String?
+  applyBatchId    String?
+  applyResultJson Json?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

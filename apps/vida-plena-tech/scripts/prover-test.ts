@@ -31,6 +31,7 @@ import { parseGcListParams, buildGcListWhere, gcListQueryString, totalPages, GC_
 import { MEMBERSHIP_SOURCE_LABEL } from "../src/lib/labels";
 import { buildConflictReport, flattenConflictReport, filterConflictRows, parseConflictKind, conflictKeys } from "../src/modules/integrations/prover/gc-membership-conflicts";
 import { saveConflictResolution, isDecisionAllowed, ALLOWED_DECISIONS, ResolutionValidationError } from "../src/modules/integrations/prover/conflict-resolutions";
+import { planResolutions, applyResolutions } from "../src/modules/integrations/prover/resolution-apply";
 import { readFileSync as readFileSyncCD } from "node:fs";
 import type { ProverGcParticipant, ProverGcVisitor } from "../src/modules/integrations/prover/types";
 import { existsSync } from "node:fs";
@@ -1094,6 +1095,122 @@ await (async () => {
   }
 })();
 
+// ── APPLY de RESOLUÇÕES aprovadas (Fase 3B.3) ─────────────────────────────
+await (async () => {
+  const prisma = new PrismaClient();
+  try {
+    const slug = "resapply-test";
+    let t = await prisma.tenant.findUnique({ where: { slug } });
+    if (!t) t = await prisma.tenant.create({ data: { slug, name: "Res Apply Test" } });
+    const tid = t.id;
+    await prisma.auditLog.deleteMany({ where: { tenantId: tid } });
+    await prisma.importBatchItem.deleteMany({ where: { tenantId: tid } });
+    await prisma.importBatch.deleteMany({ where: { tenantId: tid } });
+    await prisma.gcMembershipConflictResolution.deleteMany({ where: { tenantId: tid } });
+    await prisma.externalMapping.deleteMany({ where: { tenantId: tid } });
+    await prisma.growthGroupMembership.deleteMany({ where: { tenantId: tid } });
+    await prisma.growthGroupMeeting.deleteMany({ where: { tenantId: tid } });
+    await prisma.growthGroup.deleteMany({ where: { tenantId: tid } });
+    await prisma.person.deleteMany({ where: { tenantId: tid } });
+
+    const pKeep = await prisma.person.create({ data: { tenantId: tid, fullName: "Keep Pessoa", status: "REGULAR_ATTENDER" } });
+    const pKeepEx = await prisma.person.create({ data: { tenantId: tid, fullName: "Keep Existente", status: "REGULAR_ATTENDER" } });
+    const pClose = await prisma.person.create({ data: { tenantId: tid, fullName: "Close Pessoa", status: "VISITOR" } });
+    const pIgnore = await prisma.person.create({ data: { tenantId: tid, fullName: "Ignore Pessoa", status: "VISITOR" } });
+    const pAlias = await prisma.person.create({ data: { tenantId: tid, fullName: "Alias Candidato", status: "VISITOR" } });
+    const pSkip = await prisma.person.create({ data: { tenantId: tid, fullName: "Skip Pessoa", status: "VISITOR" } });
+    const pDraft = await prisma.person.create({ data: { tenantId: tid, fullName: "Draft Pessoa", status: "VISITOR" } });
+    const gKeep = await prisma.growthGroup.create({ data: { tenantId: tid, name: "GC Keep", active: true } });
+    const gOther = await prisma.growthGroup.create({ data: { tenantId: tid, name: "GC Other", active: true } });
+    const gInativo = await prisma.growthGroup.create({ data: { tenantId: tid, name: "GC Inativo", active: false } });
+
+    // pré-existentes: pKeep ativo em gOther (deve ser encerrado); pKeepEx ativo em gKeep (não duplica); pClose ativo em gInativo
+    await prisma.growthGroupMembership.create({ data: { tenantId: tid, gcId: gOther.id, personId: pKeep.id, leftAt: null, source: "PARTICIPANT" } });
+    await prisma.growthGroupMembership.create({ data: { tenantId: tid, gcId: gKeep.id, personId: pKeepEx.id, leftAt: null, source: "PARTICIPANT" } });
+    const mC = await prisma.growthGroupMembership.create({ data: { tenantId: tid, gcId: gInativo.id, personId: pClose.id, leftAt: null, source: "PARTICIPANT" } });
+
+    const mkRes = (data: object) => prisma.gcMembershipConflictResolution.create({ data: { tenantId: tid, status: "READY_TO_APPLY", decidedAt: new Date(), ...(data as Record<string, unknown>) } as never });
+    const kMultiA = `multi-active:${tid}:${pKeep.id}`;
+    const kMultiAEx = `multi-active:${tid}:${pKeepEx.id}`;
+    const kInactive = `inactive-gc-active-membership:${tid}:${mC.id}`;
+    const kDup = `duplicate:${tid}:${pIgnore.id}:${gKeep.id}:PARTICIPANT`;
+    const kPnf = `person-mapping-not-found:${tid}:uuid-d:gid-d`;
+    const kSkip = `multi-active:${tid}:${pSkip.id}`;
+    const kDraft = `multi-active:${tid}:${pDraft.id}`;
+    await mkRes({ type: "MULTIPLE_ACTIVE_GCS", conflictKey: kMultiA, decision: "KEEP_THIS_GC_ACTIVE", personId: pKeep.id, payloadJson: { target: gKeep.id } });
+    await mkRes({ type: "MULTIPLE_ACTIVE_GCS", conflictKey: kMultiAEx, decision: "KEEP_THIS_GC_ACTIVE", personId: pKeepEx.id, payloadJson: { target: gKeep.id } });
+    await mkRes({ type: "ACTIVE_MEMBERSHIP_IN_INACTIVE_GC", conflictKey: kInactive, decision: "CLOSE_THIS_MEMBERSHIP", personId: pClose.id, growthGroupId: gInativo.id });
+    await mkRes({ type: "DUPLICATE_MEMBERSHIP_CONFLICT", conflictKey: kDup, decision: "IGNORE_DUPLICATE", personId: pIgnore.id, growthGroupId: gKeep.id });
+    await mkRes({ type: "PERSON_MAPPING_NOT_FOUND", conflictKey: kPnf, decision: "MAP_ALIAS_TO_PERSON", proverPersonUuid: "uuid-d", payloadJson: { target: pAlias.id } });
+    await mkRes({ type: "MULTIPLE_ACTIVE_GCS", conflictKey: kSkip, decision: "KEEP_THIS_GC_ACTIVE", personId: pSkip.id, payloadJson: {} });
+    await prisma.gcMembershipConflictResolution.create({ data: { tenantId: tid, status: "DRAFT", type: "MULTIPLE_ACTIVE_GCS", conflictKey: kDraft, decision: "KEEP_THIS_GC_ACTIVE", personId: pDraft.id, payloadJson: { target: gKeep.id } } as never });
+
+    // ── DRY-RUN ──
+    const plans = await planResolutions(prisma, { tenantId: tid });
+    check("RA1. dry-run lista somente READY_TO_APPLY (6, sem DRAFT)", plans.length === 6 && plans.every((p) => p.status === "READY_TO_APPLY"));
+    check("RA2. dry-run ignora DRAFT", !plans.some((p) => p.conflictKey === kDraft));
+    const planSkip = plans.find((p) => p.conflictKey === kSkip);
+    check("RA9. decisão sem alvo claro vira SKIP_UNSAFE", planSkip?.applicable === false && planSkip?.actions.includes("SKIP_UNSAFE"));
+
+    const before = {
+      gcc: await prisma.growthGroupMembership.count({ where: { tenantId: tid } }),
+      map: await prisma.externalMapping.count({ where: { tenantId: tid } }),
+      person: await prisma.person.count({ where: { tenantId: tid } }),
+      member: await prisma.person.count({ where: { tenantId: tid, status: "MEMBER" } }),
+      user: await prisma.user.count(), role: await prisma.roleAssignment.count(),
+      meeting: await prisma.growthGroupMeeting.count({ where: { tenantId: tid } }),
+      statuses: Object.fromEntries((await prisma.person.findMany({ where: { tenantId: tid }, select: { id: true, status: true } })).map((p) => [p.id, p.status])),
+    };
+
+    // ── APPLY ──
+    const rep = await applyResolutions(prisma, { tenantId: tid, actorUserId: null });
+
+    const after = {
+      gcc: await prisma.growthGroupMembership.count({ where: { tenantId: tid } }),
+      map: await prisma.externalMapping.count({ where: { tenantId: tid } }),
+      person: await prisma.person.count({ where: { tenantId: tid } }),
+      member: await prisma.person.count({ where: { tenantId: tid, status: "MEMBER" } }),
+      user: await prisma.user.count(), role: await prisma.roleAssignment.count(),
+      meeting: await prisma.growthGroupMeeting.count({ where: { tenantId: tid } }),
+      statuses: Object.fromEntries((await prisma.person.findMany({ where: { tenantId: tid }, select: { id: true, status: true } })).map((p) => [p.id, p.status])),
+    };
+
+    const mKeep = await prisma.growthGroupMembership.findFirst({ where: { tenantId: tid, personId: pKeep.id, gcId: gKeep.id, leftAt: null } });
+    const mKeepOtherClosed = await prisma.growthGroupMembership.findFirst({ where: { tenantId: tid, personId: pKeep.id, gcId: gOther.id } });
+    check("RA4. KEEP_THIS_GC_ACTIVE cria membership ativo no alvo + encerra outro", !!mKeep && mKeepOtherClosed?.leftAt !== null);
+    const keepExCount = await prisma.growthGroupMembership.count({ where: { tenantId: tid, personId: pKeepEx.id, gcId: gKeep.id } });
+    check("RA5. KEEP não duplica membership existente", keepExCount === 1 && rep.membershipsCreated === 1);
+    const mCAfter = await prisma.growthGroupMembership.findUniqueOrThrow({ where: { id: mC.id } });
+    check("RA6. CLOSE_THIS_MEMBERSHIP preenche leftAt", mCAfter.leftAt !== null);
+    const ignoreRes = await prisma.gcMembershipConflictResolution.findUniqueOrThrow({ where: { tenantId_conflictKey: { tenantId: tid, conflictKey: kDup } } });
+    const ignoreMemberships = await prisma.growthGroupMembership.count({ where: { tenantId: tid, personId: pIgnore.id } });
+    check("RA7. IGNORE_DUPLICATE aplica sem criar vínculo", ignoreRes.status === "APPLIED" && ignoreMemberships === 0);
+    const aliasMap = await prisma.externalMapping.findFirst({ where: { tenantId: tid, system: "PROVER", externalType: "person", externalId: "uuid-d" } });
+    check("RA8. MAP_ALIAS_TO_PERSON cria só ExternalMapping p/ alvo", aliasMap?.internalId === pAlias.id && rep.aliasMappingsCreated === 1);
+    const skipRes = await prisma.gcMembershipConflictResolution.findUniqueOrThrow({ where: { tenantId_conflictKey: { tenantId: tid, conflictKey: kSkip } } });
+    check("RA9b. SKIP_UNSAFE NÃO marca APPLIED", skipRes.status === "READY_TO_APPLY" && rep.skipUnsafe === 1);
+    const keepRes = await prisma.gcMembershipConflictResolution.findUniqueOrThrow({ where: { tenantId_conflictKey: { tenantId: tid, conflictKey: kMultiA } } });
+    check("RA10. apply marca resolução como APPLIED (+ appliedAt/batch)", keepRes.status === "APPLIED" && keepRes.appliedAt !== null && keepRes.applyBatchId === rep.batchId);
+    check("RA11. apply cria AuditLog conflict_resolution_applied", (await prisma.auditLog.count({ where: { tenantId: tid, action: "conflict_resolution_applied" } })) === rep.applied && rep.applied === 5);
+    check("RA13. apply NÃO altera Person.status", JSON.stringify(after.statuses) === JSON.stringify(before.statuses) && after.member === before.member && after.member === 0);
+    check("RA14. apply NÃO cria User", after.user === before.user);
+    check("RA15. apply NÃO cria RoleAssignment", after.role === before.role);
+    check("RA16. apply NÃO importa encontros/eventos", after.meeting === before.meeting && after.meeting === 0);
+
+    // ── idempotência: 2ª execução ──
+    const rep2 = await applyResolutions(prisma, { tenantId: tid, actorUserId: null });
+    const after2 = {
+      gcc: await prisma.growthGroupMembership.count({ where: { tenantId: tid } }),
+      map: await prisma.externalMapping.count({ where: { tenantId: tid } }),
+    };
+    check("RA12. apply 2x é idempotente (0 aplicadas novas, contagens estáveis)", rep2.applied === 0 && rep2.readyToApply === 1 && after2.gcc === after.gcc && after2.map === after.map);
+  } catch (e) {
+    console.log(`  ⚠ RA. (skip) DB indisponível: ${e instanceof Error ? e.message : e}`);
+  } finally {
+    await prisma.$disconnect();
+  }
+})();
+
 // ── DECISÃO HUMANA (rascunho) de conflitos de GC (Fase 3B.2) ──────────────
 await (async () => {
   const prisma = new PrismaClient();
@@ -1229,6 +1346,12 @@ try {
   check("C5. prover:gc-memberships:apply SEM --confirm falha (exit 2)", res.status === 2, `exit=${res.status}`);
 } catch {
   console.log("  ⚠ C5. (skip) não foi possível spawnar o CLI");
+}
+try {
+  const res = spawnSync("pnpm", ["prover:gc-memberships:resolutions:apply"], { encoding: "utf8", timeout: 60000 });
+  check("C6. resolutions:apply SEM --confirm falha (exit 2)", res.status === 2, `exit=${res.status}`);
+} catch {
+  console.log("  ⚠ C6. (skip) não foi possível spawnar o CLI");
 }
 
 console.log(`\nResultado: ${passed} passou, ${failed} falhou.\n`);
