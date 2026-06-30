@@ -693,6 +693,13 @@ model GrowthGroupMeeting {
   @@index([gcId])
 }
 
+/// Origem de um registro de presença (de onde veio).
+enum GrowthGroupAttendanceSource {
+  PARTICIPANT // grupos_encontros_participantes (Prover)
+  VISITOR // grupos_encontros_visitantes (Prover) — NÃO promove a membro
+  MANUAL // registrado dentro da plataforma
+}
+
 model GrowthGroupAttendance {
   id         String           @id @default(cuid())
   tenantId   String
@@ -701,6 +708,11 @@ model GrowthGroupAttendance {
   visitorName String?
   status     AttendanceStatus
   createdAt  DateTime         @default(now())
+
+  // Fase 4B.2 — campos aditivos (importação de presenças do Prover)
+  source     GrowthGroupAttendanceSource @default(MANUAL)
+  sourceMark String?                                       // marca crua do Prover ("1"/"0")
+  metaJson   Json?                                         // anotacao etc.
 
   meeting GrowthGroupMeeting @relation(fields: [meetingId], references: [id])
   person  Person?            @relation(fields: [personId], references: [id])

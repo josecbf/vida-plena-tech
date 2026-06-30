@@ -419,6 +419,26 @@ reativa o GC); **duplicados por GC/data** com `encontro_id` distintos são criad
 Auditoria `AuditLog` `import_meeting_create`/`import_meeting_update`. **Nunca** cria
 `GrowthGroupAttendance`, altera membership/Person/status, nem cria User/Role.
 
+#### Apply de presenças (Fase 4B.2)
+
+```bash
+pnpm prover:gc-attendance:apply --file ./data/export_prover_2026-06-27.zip --limit 200 --confirm APPLY
+pnpm prover:gc-attendance:apply --file ./data/export_prover_2026-06-27.zip --confirm APPLY   # FULL (só com autorização)
+```
+
+Cria `GrowthGroupAttendance` a partir de participantes/visitantes de encontros. Só linhas com marca
+clara: `presenca "1"`→`PRESENT`, `"0"`→`ABSENT`, **`null`→pula**. Visitante → `source = VISITOR`
+(status `VISITOR`; **não** vira membro, **não** altera `Person.status`). Resolve encontro
+(`ExternalMapping growth_group_meeting`), pessoa (`person`) e GC; verifica membership compatível na
+data — mas **cria a presença mesmo sem membership** (`ATTENDANCE_WITHOUT_MEMBERSHIP`/
+`…OUTSIDE_MEMBERSHIP_DATE_RANGE` viram warning; presença é fato histórico, não se apaga por pendência
+de vínculo). Idempotente via `ExternalMapping growth_group_attendance` (`encontro:pessoa:source`):
+2× → 0 duplicados. Duplicidade idêntica consolida (1 só); **conflitante** (`presenca` divergente no
+mesmo encontro/pessoa) → `SKIP` `ATTENDANCE_DUPLICATE_CONFLICT` (não cria nenhuma). `--confirm APPLY`
+obrigatório, `--limit` suportado. Auditoria `import_attendance_create`. **Nunca** cria/altera
+membership/Person/status/encontro, nem cria User/Role. Campos aditivos `source`/`sourceMark`
+(migration aditiva; `status AttendanceStatus` reaproveitado).
+
 ### Testes das funções puras + DB
 
 ```bash

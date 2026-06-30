@@ -34,6 +34,7 @@ import { saveConflictResolution, isDecisionAllowed, ALLOWED_DECISIONS, Resolutio
 import { planResolutions, applyResolutions } from "../src/modules/integrations/prover/resolution-apply";
 import { runGcMeetingsDryRun } from "../src/modules/integrations/prover/gc-meetings-dry-run";
 import { runGcMeetingsApply } from "../src/modules/integrations/prover/gc-meetings-apply";
+import { runGcAttendanceApply } from "../src/modules/integrations/prover/gc-attendance-apply";
 import type { ProverGcMeeting, ProverGcMeetingAttendance } from "../src/modules/integrations/prover/types";
 import { readFileSync as readFileSyncCD } from "node:fs";
 import type { ProverGcParticipant, ProverGcVisitor } from "../src/modules/integrations/prover/types";
@@ -1098,6 +1099,112 @@ await (async () => {
   }
 })();
 
+// ── APPLY de PRESENÇAS de GC (Fase 4B.2) ──────────────────────────────────
+await (async () => {
+  const prisma = new PrismaClient();
+  try {
+    const slug = "attapply-test";
+    let t = await prisma.tenant.findUnique({ where: { slug } });
+    if (!t) t = await prisma.tenant.create({ data: { slug, name: "Att Apply Test" } });
+    const tid = t.id;
+    await prisma.auditLog.deleteMany({ where: { tenantId: tid } });
+    await prisma.importBatchItem.deleteMany({ where: { tenantId: tid } });
+    await prisma.importBatch.deleteMany({ where: { tenantId: tid } });
+    await prisma.externalMapping.deleteMany({ where: { tenantId: tid } });
+    await prisma.growthGroupAttendance.deleteMany({ where: { tenantId: tid } });
+    await prisma.growthGroupMeeting.deleteMany({ where: { tenantId: tid } });
+    await prisma.growthGroupMembership.deleteMany({ where: { tenantId: tid } });
+    await prisma.growthGroup.deleteMany({ where: { tenantId: tid } });
+    await prisma.person.deleteMany({ where: { tenantId: tid } });
+
+    const mkP = async (uuid: string, name: string) => {
+      const p = await prisma.person.create({ data: { tenantId: tid, fullName: name, status: "VISITOR" } });
+      await prisma.externalMapping.create({ data: { tenantId: tid, system: "PROVER", externalType: "person", externalId: uuid, internalType: "Person", internalId: p.id } });
+      return p;
+    };
+    const gA = await prisma.growthGroup.create({ data: { tenantId: tid, name: "GC A", active: true } });
+    await prisma.externalMapping.create({ data: { tenantId: tid, system: "PROVER", externalType: "growth_group", externalId: "gid-A", internalType: "GrowthGroup", internalId: gA.id } });
+    const meet = await prisma.growthGroupMeeting.create({ data: { tenantId: tid, gcId: gA.id, date: new Date("2020-06-01"), happened: true, status: "HELD" } });
+    await prisma.externalMapping.create({ data: { tenantId: tid, system: "PROVER", externalType: "growth_group_meeting", externalId: "e1", internalType: "GrowthGroupMeeting", internalId: meet.id } });
+
+    const pPr = await mkP("uuid-Pr", "Presente"); const pAb = await mkP("uuid-Ab", "Ausente"); const pNo = await mkP("uuid-No", "SemMem");
+    const pOut = await mkP("uuid-Out", "Fora"); const pVi = await mkP("uuid-Vi", "Visitante"); const pDs = await mkP("uuid-Ds", "DupSimples"); const pDc = await mkP("uuid-Dc", "DupConflito");
+    // compatíveis (cobrem 2020-06-01): pPr, pAb, pDs, pDc → só pNo fica sem membership
+    for (const px of [pPr, pAb, pDs, pDc]) await prisma.growthGroupMembership.create({ data: { tenantId: tid, gcId: gA.id, personId: px.id, joinedAt: new Date("2019-01-01"), leftAt: null, source: "PARTICIPANT" } });
+    await prisma.growthGroupMembership.create({ data: { tenantId: tid, gcId: gA.id, personId: pOut.id, joinedAt: new Date("2021-01-01"), leftAt: null, source: "PARTICIPANT" } }); // fora do período
+
+    const P = (o: Partial<ProverGcMeetingAttendance>): ProverGcMeetingAttendance => ({ grupo_id: "gid-A", encontro_id: "e1", data_inicio: "2020-06-01 20:00:00", ...o });
+    const participants: ProverGcMeetingAttendance[] = [
+      P({ pessoa_uuid: "uuid-Pr", presenca: "1" }),   // PRESENT + membership compatível
+      P({ pessoa_uuid: "uuid-Ab", presenca: "0" }),   // ABSENT
+      P({ pessoa_uuid: "uuid-Null", presenca: null }),// pula
+      P({ pessoa_uuid: "uuid-No", presenca: "1" }),   // sem membership (cria + warning)
+      P({ pessoa_uuid: "uuid-Out", presenca: "1" }),  // fora do período (cria + warning)
+      P({ pessoa_uuid: "uuid-UNKNOWN", presenca: "1" }), // pessoa não resolvida → SKIP
+      P({ encontro_id: "eX", pessoa_uuid: "uuid-Pr", presenca: "1" }), // encontro não resolvido → SKIP
+      P({ pessoa_uuid: "uuid-Ds", presenca: "1" }),   // dup simples
+      P({ pessoa_uuid: "uuid-Ds", presenca: "1" }),   // dup simples (idêntica)
+      P({ pessoa_uuid: "uuid-Dc", presenca: "1" }),   // dup conflitante
+      P({ pessoa_uuid: "uuid-Dc", presenca: "0" }),   // dup conflitante (divergente)
+    ];
+    const visitors: ProverGcMeetingAttendance[] = [
+      P({ pessoa_uuid: "uuid-Vi", presenca: "1" }),   // visitante presente → VISITOR
+    ];
+
+    const before = {
+      att: await prisma.growthGroupAttendance.count({ where: { tenantId: tid } }),
+      meeting: await prisma.growthGroupMeeting.count({ where: { tenantId: tid } }),
+      gcc: await prisma.growthGroupMembership.count({ where: { tenantId: tid } }),
+      person: await prisma.person.count({ where: { tenantId: tid } }),
+      member: await prisma.person.count({ where: { tenantId: tid, status: "MEMBER" } }),
+      user: await prisma.user.count(), role: await prisma.roleAssignment.count(),
+      statuses: Object.fromEntries((await prisma.person.findMany({ where: { tenantId: tid }, select: { id: true, status: true } })).map((p) => [p.id, p.status])),
+    };
+
+    const r = await runGcAttendanceApply(prisma, { tenantId: tid, fileName: "test", participants, visitors });
+
+    const att = (personId: string) => prisma.growthGroupAttendance.findFirst({ where: { tenantId: tid, meetingId: meet.id, personId } });
+    const aPr = await att(pPr.id); const aAb = await att(pAb.id); const aVi = await att(pVi.id);
+
+    const after = {
+      att: await prisma.growthGroupAttendance.count({ where: { tenantId: tid } }),
+      meeting: await prisma.growthGroupMeeting.count({ where: { tenantId: tid } }),
+      gcc: await prisma.growthGroupMembership.count({ where: { tenantId: tid } }),
+      person: await prisma.person.count({ where: { tenantId: tid } }),
+      member: await prisma.person.count({ where: { tenantId: tid, status: "MEMBER" } }),
+      user: await prisma.user.count(), role: await prisma.roleAssignment.count(),
+      statuses: Object.fromEntries((await prisma.person.findMany({ where: { tenantId: tid }, select: { id: true, status: true } })).map((p) => [p.id, p.status])),
+    };
+
+    check("AT1. cria PRESENT de participante", aPr?.status === "PRESENT" && aPr?.source === "PARTICIPANT");
+    check("AT2. cria ABSENT de participante", aAb?.status === "ABSENT" && aAb?.source === "PARTICIPANT");
+    check("AT3. pula presenca=null", r.presencaNullSkipped === 1);
+    check("AT4. cria visitante com source VISITOR", aVi?.status === "VISITOR" && aVi?.source === "VISITOR" && r.visitorsCreated === 1);
+    check("AT5. visitante NÃO vira MEMBER", after.statuses[pVi.id] === "VISITOR" && after.member === before.member && after.member === 0);
+    check("AT6. pessoa não resolvida → SKIP", r.personNotFound === 1);
+    check("AT7. encontro não resolvido → SKIP", r.meetingNotFound === 1);
+    check("AT8. sem membership cria presença + warning", r.withoutMembership === 1 && !!(await att(pNo.id)) && (await prisma.growthGroupMembership.count({ where: { tenantId: tid, personId: pNo.id } })) === 0);
+    check("AT9. fora do período cria presença + warning", r.outsideRange === 1 && !!(await att(pOut.id)));
+    check("AT10. duplicidade idêntica não duplica", r.duplicateSimple === 1 && (await prisma.growthGroupAttendance.count({ where: { tenantId: tid, personId: pDs.id } })) === 1);
+    check("AT11. duplicidade conflitante vira SKIP", r.duplicateConflict === 2 && (await prisma.growthGroupAttendance.count({ where: { tenantId: tid, personId: pDc.id } })) === 0);
+    check("AT13. NÃO altera GrowthGroupMeeting", after.meeting === before.meeting);
+    check("AT14. NÃO altera GrowthGroupMembership", after.gcc === before.gcc);
+    check("AT15. NÃO altera Person", after.person === before.person && JSON.stringify(after.statuses) === JSON.stringify(before.statuses));
+    check("AT16. NÃO cria User", after.user === before.user);
+    check("AT17. NÃO cria RoleAssignment", after.role === before.role);
+    check("ATx. created=6 (5 presentes + 1 ausente)", r.created === 6 && r.present === 5 && r.absent === 1);
+
+    // AT12: idempotência
+    const r2 = await runGcAttendanceApply(prisma, { tenantId: tid, fileName: "test", participants, visitors });
+    const fin = { att: await prisma.growthGroupAttendance.count({ where: { tenantId: tid } }), map: await prisma.externalMapping.count({ where: { tenantId: tid, externalType: "growth_group_attendance" } }) };
+    check("AT12. apply 2x não duplica (0 criados, contagens estáveis)", r2.created === 0 && fin.att === after.att && fin.map === r.created);
+  } catch (e) {
+    console.log(`  ⚠ AT. (skip) DB indisponível: ${e instanceof Error ? e.message : e}`);
+  } finally {
+    await prisma.$disconnect();
+  }
+})();
+
 // ── APPLY de ENCONTROS de GC (Fase 4B.1) ──────────────────────────────────
 await (async () => {
   const prisma = new PrismaClient();
@@ -1537,6 +1644,12 @@ try {
   check("C7. gc-meetings:apply SEM --confirm falha (exit 2)", res.status === 2, `exit=${res.status}`);
 } catch {
   console.log("  ⚠ C7. (skip) não foi possível spawnar o CLI");
+}
+try {
+  const res = spawnSync("pnpm", ["prover:gc-attendance:apply", "--file", "./data/sample/x.zip"], { encoding: "utf8", timeout: 60000 });
+  check("C8. gc-attendance:apply SEM --confirm falha (exit 2)", res.status === 2, `exit=${res.status}`);
+} catch {
+  console.log("  ⚠ C8. (skip) não foi possível spawnar o CLI");
 }
 
 console.log(`\nResultado: ${passed} passou, ${failed} falhou.\n`);
