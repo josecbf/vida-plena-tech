@@ -27,6 +27,8 @@ import { buildSanitizationReport, writeSanitizationReport } from "../src/modules
 import { analyzePersonMappingReconcile, applyPersonMappingReconcile } from "../src/modules/integrations/prover/person-mapping-reconcile";
 import { analyzeAliasMapping, applyAliasMapping } from "../src/modules/integrations/prover/person-alias-mapping";
 import { runGcMembershipsApply } from "../src/modules/integrations/prover/gc-memberships-apply";
+import { parseGcListParams, buildGcListWhere, gcListQueryString, totalPages, GC_PAGE_SIZE } from "../src/lib/gc-list";
+import { MEMBERSHIP_SOURCE_LABEL } from "../src/lib/labels";
 import type { ProverGcParticipant, ProverGcVisitor } from "../src/modules/integrations/prover/types";
 import { existsSync } from "node:fs";
 import nodePath from "node:path";
@@ -1014,6 +1016,41 @@ await (async () => {
   } finally {
     await prisma.$disconnect();
   }
+})();
+
+// ── UI: helpers da lista de GCs + labels (puros, sem DB) ──────────────────
+(() => {
+  // parse
+  const d = parseGcListParams({});
+  check("UL1. parse default (all/all/page1)", d.q === "" && d.status === "all" && d.members === "all" && d.page === 1);
+  const v = parseGcListParams({ q: "  Graça  ", status: "inactive", members: "with", page: "3" });
+  check("UL2. parse valores válidos + trim", v.q === "Graça" && v.status === "inactive" && v.members === "with" && v.page === 3);
+  const bad = parseGcListParams({ status: "xpto", members: "??", page: "-2" });
+  check("UL3. parse valores inválidos → defaults", bad.status === "all" && bad.members === "all" && bad.page === 1);
+
+  // where
+  const wAll = buildGcListWhere({ tenantId: "t1", scopeIds: "ALL", params: parseGcListParams({}) });
+  check("UL4. where base (tenant + archivedAt null, sem id)", wAll.tenantId === "t1" && wAll.archivedAt === null && !("id" in wAll));
+  const wScoped = buildGcListWhere({ tenantId: "t1", scopeIds: ["a", "b"], params: parseGcListParams({ q: "x", status: "active", members: "with" }) });
+  check("UL5. where escopo + busca + status + membros",
+    JSON.stringify((wScoped.id as { in: string[] }).in) === JSON.stringify(["a", "b"]) &&
+    (wScoped.name as { contains: string }).contains === "x" &&
+    wScoped.active === true &&
+    !!(wScoped.memberships as { some?: object }).some);
+  const wWithout = buildGcListWhere({ tenantId: "t1", scopeIds: "ALL", params: parseGcListParams({ status: "inactive", members: "without" }) });
+  check("UL6. where inativo + sem membros ativos", wWithout.active === false && !!(wWithout.memberships as { none?: object }).none);
+
+  // query string
+  check("UL7. queryString limpo p/ defaults", gcListQueryString(parseGcListParams({})) === "");
+  check("UL8. queryString preserva filtros + override de página", gcListQueryString(parseGcListParams({ q: "Fé", status: "active" }), { page: 2 }) === "?q=F%C3%A9&status=active&page=2");
+
+  // paginação
+  check("UL9. totalPages (823 / 50 = 17)", totalPages(823) === 17 && GC_PAGE_SIZE === 50 && totalPages(0) === 1);
+
+  // labels de origem
+  check("UL10. MEMBERSHIP_SOURCE_LABEL cobre todas as origens",
+    MEMBERSHIP_SOURCE_LABEL.PARTICIPANT === "Participante" && MEMBERSHIP_SOURCE_LABEL.VISITOR === "Visitante" &&
+    MEMBERSHIP_SOURCE_LABEL.MANUAL === "Manual" && MEMBERSHIP_SOURCE_LABEL.IMPORTED === "Importado");
 })();
 
 // ── --confirm APPLY obrigatório (guard do CLI) ────────────────────────────

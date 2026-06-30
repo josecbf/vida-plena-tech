@@ -35,6 +35,36 @@ function Stat({ label, value }: { label: string; value: number | string }) {
   );
 }
 
+type UnitWithMembers = {
+  name: string;
+  type: string;
+  members: { id: string; role: string; person: { fullName: string } }[];
+};
+
+function UnitBlock({ title, unit, empty }: { title: string; unit: UnitWithMembers | null; empty: string }) {
+  return (
+    <div>
+      <div className="mb-1 text-xs font-medium uppercase tracking-wide text-mist">{title}</div>
+      {unit ? (
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium">{unit.name}</span>
+            <Badge variant="outline">{unit.type}</Badge>
+          </div>
+          {unit.members.map((m) => (
+            <div key={m.id} className="flex items-center justify-between text-sm">
+              <span>{m.person.fullName}</span>
+              <Badge variant="muted">{leadershipRoleLabel(m.role)}</Badge>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm text-mist">{empty}</p>
+      )}
+    </div>
+  );
+}
+
 export default async function GcDetailPage({
   params,
 }: {
@@ -66,13 +96,29 @@ export default async function GcDetailPage({
   });
   if (!gc) notFound();
 
-  // Unidade de liderança (novo modelo) — legado segue em gc.leader/assistant
-  const leadershipUnit = gc.leadershipUnitId
-    ? await prisma.leadershipUnit.findUnique({
-        where: { id: gc.leadershipUnitId },
-        include: { members: { include: { person: true } } },
-      })
-    : null;
+  // Unidades (novo modelo) — legado segue em gc.leader/assistant.
+  const loadUnit = (unitId: string | null) =>
+    unitId
+      ? prisma.leadershipUnit.findUnique({
+          where: { id: unitId },
+          include: { members: { include: { person: true } } },
+        })
+      : Promise.resolve(null);
+
+  const [leadershipUnit, supervisionUnit, coordinationUnit, historicalCount, bySourceRaw] =
+    await Promise.all([
+      loadUnit(gc.leadershipUnitId),
+      loadUnit(gc.supervisionUnitId),
+      loadUnit(gc.coordinationUnitId),
+      prisma.growthGroupMembership.count({ where: { tenantId: ctx.tenantId, gcId: id, NOT: { leftAt: null } } }),
+      prisma.growthGroupMembership.groupBy({ by: ["source"], where: { tenantId: ctx.tenantId, gcId: id }, _count: true }),
+    ]);
+
+  const activeCount = gc.memberships.length;
+  const bySource: Record<string, number> = { PARTICIPANT: 0, VISITOR: 0, MANUAL: 0, IMPORTED: 0 };
+  for (const row of bySourceRaw) bySource[row.source] = row._count;
+  // inconsistência read-only: GC inativo com vínculo ativo (não corrige).
+  const inactiveWithActive = !gc.active && activeCount > 0;
 
   // Dashboard do GC
   const lastMeeting = gc.meetings[0];
@@ -102,8 +148,21 @@ export default async function GcDetailPage({
         action={gc.active ? <Badge variant="success">Ativo</Badge> : <Badge variant="muted">Inativo</Badge>}
       />
 
+      {inactiveWithActive ? (
+        <div className="mb-4 rounded-lg border border-warning/30 bg-warning/10 px-4 py-2.5 text-sm text-warning">
+          ⚠ GC inativo com vínculo ativo — revisar origem ({activeCount} vínculo(s) ativo(s) em GC inativo).
+        </div>
+      ) : null}
+
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-5">
-        <Stat label="Membros ativos" value={gc.memberships.length} />
+        <Stat label="Membros ativos" value={activeCount} />
+        <Stat label="Históricos" value={historicalCount} />
+        <Stat label="Participantes" value={bySource.PARTICIPANT} />
+        <Stat label="Visitantes" value={bySource.VISITOR} />
+        <Stat label="Manuais" value={bySource.MANUAL} />
+      </div>
+
+      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat label="Freq. média" value={avgAttendance} />
         <Stat label="Presentes (último)" value={lastPresent} />
         <Stat label="Ausentes (último)" value={lastAbsent} />
@@ -209,29 +268,20 @@ export default async function GcDetailPage({
         <div className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Unidade de liderança</CardTitle>
+              <CardTitle>Liderança e cobertura</CardTitle>
               <CardDescription>
                 Líder 1: {gc.leader?.fullName ?? "—"}
                 {gc.assistant ? ` · Líder 2: ${gc.assistant.fullName}` : ""} (legado)
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-2">
-              {leadershipUnit ? (
-                <>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">{leadershipUnit.name}</span>
-                    <Badge variant="outline">{leadershipUnit.type}</Badge>
-                  </div>
-                  {leadershipUnit.members.map((m) => (
-                    <div key={m.id} className="flex items-center justify-between text-sm">
-                      <span>{m.person.fullName}</span>
-                      <Badge variant="muted">{leadershipRoleLabel(m.role)}</Badge>
-                    </div>
-                  ))}
-                </>
-              ) : (
-                <p className="text-sm text-mist">Sem unidade de liderança ainda.</p>
-              )}
+            <CardContent className="space-y-4">
+              <UnitBlock title="Liderança" unit={leadershipUnit} empty="Sem unidade de liderança." />
+              <UnitBlock title="Supervisão" unit={supervisionUnit} empty="Sem supervisão definida." />
+              <UnitBlock title="Coordenação" unit={coordinationUnit} empty="Sem coordenação definida." />
+              <div>
+                <div className="mb-1 text-xs font-medium uppercase tracking-wide text-mist">Pastor de área</div>
+                <p className="text-sm text-mist">Não informado</p>
+              </div>
             </CardContent>
           </Card>
 

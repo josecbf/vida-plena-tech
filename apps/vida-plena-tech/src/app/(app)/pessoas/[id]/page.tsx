@@ -303,18 +303,24 @@ export default async function PersonPage({
               ) : (
                 <>
                   {gcActive.map((m) => (
-                    <Link key={m.id} href={`/gcs/${m.gcId}`} className="flex items-center justify-between gap-2 rounded-md p-1 hover:bg-ink/[0.03]">
-                      <span className="font-medium">{m.gc.name}</span>
-                      <span className="flex items-center gap-1.5">
+                    <Link key={m.id} href={`/gcs/${m.gcId}`} className="flex items-start justify-between gap-2 rounded-md p-1 hover:bg-ink/[0.03]">
+                      <span className="min-w-0">
+                        <span className="block truncate font-medium">{m.gc.name}</span>
+                        <span className="text-xs text-mist">Entrada: {formatDate(m.joinedAt)}</span>
+                      </span>
+                      <span className="flex shrink-0 items-center gap-1.5">
                         <Badge variant="muted">{MEMBERSHIP_SOURCE_LABEL[m.source]}</Badge>
                         <Badge variant="success">Ativo</Badge>
                       </span>
                     </Link>
                   ))}
                   {gcPast.slice(0, 8).map((m) => (
-                    <Link key={m.id} href={`/gcs/${m.gcId}`} className="flex items-center justify-between gap-2 rounded-md p-1 text-mist hover:bg-ink/[0.03]">
-                      <span>{m.gc.name}</span>
-                      <span className="flex items-center gap-1.5">
+                    <Link key={m.id} href={`/gcs/${m.gcId}`} className="flex items-start justify-between gap-2 rounded-md p-1 text-mist hover:bg-ink/[0.03]">
+                      <span className="min-w-0">
+                        <span className="block truncate">{m.gc.name}</span>
+                        <span className="text-xs">Entrada: {formatDate(m.joinedAt)} · Saída: {formatDate(m.leftAt)}</span>
+                      </span>
+                      <span className="flex shrink-0 items-center gap-1.5">
                         <Badge variant="muted">{MEMBERSHIP_SOURCE_LABEL[m.source]}</Badge>
                         <Badge variant="outline">Histórico</Badge>
                       </span>
