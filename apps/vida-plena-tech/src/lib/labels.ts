@@ -5,7 +5,15 @@ import {
   RegistrationSource,
   FamilyRelationship,
   TimelineEntryType,
+  GrowthGroupMembershipSource,
 } from "@prisma/client";
+
+export const MEMBERSHIP_SOURCE_LABEL: Record<GrowthGroupMembershipSource, string> = {
+  PARTICIPANT: "Participante",
+  VISITOR: "Visitante",
+  MANUAL: "Manual",
+  IMPORTED: "Importado",
+};
 
 export const STATUS_LABEL: Record<EclesiasticalStatus, string> = {
   VISITOR: "Visitante",

@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/misc";
 import { Button } from "@/components/ui/button";
 import { weekdayLabel, formatDate } from "@/lib/format";
-import { STATUS_LABEL, ATTENDANCE_LABEL } from "@/lib/labels";
+import { STATUS_LABEL, ATTENDANCE_LABEL, MEMBERSHIP_SOURCE_LABEL } from "@/lib/labels";
 import { InviteLinkBox, NewMeetingForm } from "./gc-actions";
 
 function Stat({ label, value }: { label: string; value: number | string }) {
@@ -132,7 +132,10 @@ export default async function GcDetailPage({
                       <Avatar name={m.person.fullName} />
                       <span className="text-sm font-medium">{m.person.fullName}</span>
                     </span>
-                    <Badge variant="outline">{STATUS_LABEL[m.person.status]}</Badge>
+                    <span className="flex items-center gap-2">
+                      <Badge variant="muted">{MEMBERSHIP_SOURCE_LABEL[m.source]}</Badge>
+                      <Badge variant="outline">{STATUS_LABEL[m.person.status]}</Badge>
+                    </span>
                   </Link>
                 ))
               )}

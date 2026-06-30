@@ -23,6 +23,7 @@ import {
   RELATIONSHIP_LABEL,
   TIMELINE_LABEL,
   SOURCE_LABEL,
+  MEMBERSHIP_SOURCE_LABEL,
 } from "@/lib/labels";
 import { maskCpf, formatCpf, formatDate, formatDateTime } from "@/lib/format";
 import {
@@ -51,9 +52,15 @@ export default async function PersonPage({
       statusHistory: { orderBy: { createdAt: "desc" } },
       timeline: { orderBy: { occurredAt: "desc" }, take: 50 },
       householdLinksA: { include: { household: { include: { members: { include: { person: true } } } } } },
+      gcHistory: { include: { gc: { select: { id: true, name: true, active: true } } }, orderBy: [{ leftAt: "asc" }, { joinedAt: "desc" }] },
     },
   });
   if (!person) notFound();
+
+  // Vínculos de GC (somente leitura): ativos primeiro, depois históricos. NÃO é
+  // o "GC principal" (primaryGc), que é uma escolha curatorial separada.
+  const gcActive = person.gcHistory.filter((m) => m.leftAt === null);
+  const gcPast = person.gcHistory.filter((m) => m.leftAt !== null);
 
   const canSensitive = can(ctx, "people.timeline_sensitive.view");
   const canFullCpf = can(ctx, "people.cpf.view_full");
@@ -284,6 +291,42 @@ export default async function PersonPage({
               </CardContent>
             </Card>
           ) : null}
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Grupos de Crescimento</CardTitle>
+              <CardDescription>Vínculos de GC (participação e visita). Ativos e histórico.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              {person.gcHistory.length === 0 ? (
+                <p className="text-sm text-mist">Nenhum vínculo de GC.</p>
+              ) : (
+                <>
+                  {gcActive.map((m) => (
+                    <Link key={m.id} href={`/gcs/${m.gcId}`} className="flex items-center justify-between gap-2 rounded-md p-1 hover:bg-ink/[0.03]">
+                      <span className="font-medium">{m.gc.name}</span>
+                      <span className="flex items-center gap-1.5">
+                        <Badge variant="muted">{MEMBERSHIP_SOURCE_LABEL[m.source]}</Badge>
+                        <Badge variant="success">Ativo</Badge>
+                      </span>
+                    </Link>
+                  ))}
+                  {gcPast.slice(0, 8).map((m) => (
+                    <Link key={m.id} href={`/gcs/${m.gcId}`} className="flex items-center justify-between gap-2 rounded-md p-1 text-mist hover:bg-ink/[0.03]">
+                      <span>{m.gc.name}</span>
+                      <span className="flex items-center gap-1.5">
+                        <Badge variant="muted">{MEMBERSHIP_SOURCE_LABEL[m.source]}</Badge>
+                        <Badge variant="outline">Histórico</Badge>
+                      </span>
+                    </Link>
+                  ))}
+                  {gcPast.length > 8 ? (
+                    <p className="px-1 text-xs text-mist">+{gcPast.length - 8} vínculo(s) histórico(s)</p>
+                  ) : null}
+                </>
+              )}
+            </CardContent>
+          </Card>
 
           <Card>
             <CardHeader>
