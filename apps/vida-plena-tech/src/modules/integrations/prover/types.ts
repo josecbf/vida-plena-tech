@@ -109,7 +109,10 @@ export interface ProverGcMeeting {
   data_fim?: string | null;
   status?: string | null; // agendado | realizado | cancelado
   oferta?: string | null;
+  pauta?: string | null;
+  resumo?: string | null;
   num_criancas?: string | null;
+  quilos_doados?: string | null;
 }
 
 /**

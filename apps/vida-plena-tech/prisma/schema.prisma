@@ -661,6 +661,14 @@ model GrowthGroupMembership {
   @@index([personId])
 }
 
+/// Status real do encontro (preserva a semântica do Prover: agendado/realizado/cancelado).
+enum GrowthGroupMeetingStatus {
+  SCHEDULED // agendado
+  HELD // realizado
+  CANCELED // cancelado
+  UNKNOWN // status de origem não reconhecido
+}
+
 model GrowthGroupMeeting {
   id        String   @id @default(cuid())
   tenantId  String
@@ -670,6 +678,13 @@ model GrowthGroupMeeting {
   notes     String?
   createdAt DateTime @default(now())
   actorUserId String?
+
+  // Fase 4B.1 — campos aditivos (importação de encontros do Prover)
+  status      GrowthGroupMeetingStatus @default(HELD) // happened mantido p/ compat
+  sourceStatus String?                                // status cru do Prover (ex.: "realizado")
+  title       String?                                 // tema do encontro
+  endAt       DateTime?                               // data_fim
+  metaJson    Json?                                   // oferta, num_criancas, quilos_doados…
 
   gc          GrowthGroup             @relation(fields: [gcId], references: [id])
   attendances GrowthGroupAttendance[]

@@ -33,6 +33,7 @@ import { buildConflictReport, flattenConflictReport, filterConflictRows, parseCo
 import { saveConflictResolution, isDecisionAllowed, ALLOWED_DECISIONS, ResolutionValidationError } from "../src/modules/integrations/prover/conflict-resolutions";
 import { planResolutions, applyResolutions } from "../src/modules/integrations/prover/resolution-apply";
 import { runGcMeetingsDryRun } from "../src/modules/integrations/prover/gc-meetings-dry-run";
+import { runGcMeetingsApply } from "../src/modules/integrations/prover/gc-meetings-apply";
 import type { ProverGcMeeting, ProverGcMeetingAttendance } from "../src/modules/integrations/prover/types";
 import { readFileSync as readFileSyncCD } from "node:fs";
 import type { ProverGcParticipant, ProverGcVisitor } from "../src/modules/integrations/prover/types";
@@ -1097,6 +1098,92 @@ await (async () => {
   }
 })();
 
+// ── APPLY de ENCONTROS de GC (Fase 4B.1) ──────────────────────────────────
+await (async () => {
+  const prisma = new PrismaClient();
+  try {
+    const slug = "meetapply-test";
+    let t = await prisma.tenant.findUnique({ where: { slug } });
+    if (!t) t = await prisma.tenant.create({ data: { slug, name: "Meeting Apply Test" } });
+    const tid = t.id;
+    await prisma.auditLog.deleteMany({ where: { tenantId: tid } });
+    await prisma.importBatchItem.deleteMany({ where: { tenantId: tid } });
+    await prisma.importBatch.deleteMany({ where: { tenantId: tid } });
+    await prisma.externalMapping.deleteMany({ where: { tenantId: tid } });
+    await prisma.growthGroupAttendance.deleteMany({ where: { tenantId: tid } });
+    await prisma.growthGroupMeeting.deleteMany({ where: { tenantId: tid } });
+    await prisma.growthGroup.deleteMany({ where: { tenantId: tid } });
+    await prisma.person.deleteMany({ where: { tenantId: tid } });
+
+    const mkG = async (gid: string, name: string, active: boolean) => {
+      const g = await prisma.growthGroup.create({ data: { tenantId: tid, name, active } });
+      await prisma.externalMapping.create({ data: { tenantId: tid, system: "PROVER", externalType: "growth_group", externalId: gid, internalType: "GrowthGroup", internalId: g.id } });
+      return g;
+    };
+    await mkG("gid-A", "GC Ativo", true);
+    await mkG("gid-INACTIVE", "GC Inativo", false);
+
+    const meetings: ProverGcMeeting[] = [
+      { grupo_id: "gid-A", encontro_id: "mH", data_inicio: "2020-05-01 20:00:00", data_fim: "2020-05-01 21:30:00", tema: "Tema H", status: "realizado" },
+      { grupo_id: "gid-A", encontro_id: "mS", data_inicio: "2020-05-08 20:00:00", tema: "Tema S", status: "agendado" },
+      { grupo_id: "gid-A", encontro_id: "mC", data_inicio: "2020-05-15 20:00:00", tema: "Tema C", status: "cancelado" },
+      { grupo_id: "gid-INACTIVE", encontro_id: "mI", data_inicio: "2020-05-22 20:00:00", status: "realizado" },
+      { grupo_id: "gid-A", encontro_id: "mD1", data_inicio: "2020-06-01 19:00:00", status: "realizado" },
+      { grupo_id: "gid-A", encontro_id: "mD2", data_inicio: "2020-06-01 20:30:00", status: "realizado" }, // mesmo GC/dia que mD1, id distinto
+      { grupo_id: "gid-X", encontro_id: "mX", data_inicio: "2020-06-08 20:00:00", status: "realizado" }, // GC não mapeado
+    ];
+
+    const before = {
+      meeting: await prisma.growthGroupMeeting.count({ where: { tenantId: tid } }),
+      att: await prisma.growthGroupAttendance.count({ where: { tenantId: tid } }),
+      gcc: await prisma.growthGroupMembership.count({ where: { tenantId: tid } }),
+      person: await prisma.person.count({ where: { tenantId: tid } }),
+      user: await prisma.user.count(), role: await prisma.roleAssignment.count(),
+    };
+
+    const r = await runGcMeetingsApply(prisma, { tenantId: tid, fileName: "test", meetings });
+
+    const findMeeting = async (encontroId: string) => {
+      const map = await prisma.externalMapping.findFirst({ where: { tenantId: tid, system: "PROVER", externalType: "growth_group_meeting", externalId: encontroId } });
+      return map ? prisma.growthGroupMeeting.findUnique({ where: { id: map.internalId } }) : null;
+    };
+    const mH = await findMeeting("mH"); const mS = await findMeeting("mS"); const mC = await findMeeting("mC");
+
+    check("MA1. cria encontro realizado (HELD/happened)", mH?.status === "HELD" && mH?.happened === true);
+    check("MA2. cria encontro agendado (SCHEDULED/!happened)", mS?.status === "SCHEDULED" && mS?.happened === false);
+    check("MA3. cria encontro cancelado (CANCELED/!happened)", mC?.status === "CANCELED" && mC?.happened === false);
+    check("MA4. preserva status do Prover (sourceStatus)", mH?.sourceStatus === "realizado" && mS?.sourceStatus === "agendado" && mC?.sourceStatus === "cancelado");
+    check("MA5. cria ExternalMapping growth_group_meeting", (await prisma.externalMapping.count({ where: { tenantId: tid, externalType: "growth_group_meeting" } })) === 6 && r.created === 6);
+    check("MA7. encontro em GC inativo criado + warning", r.inInactiveGc === 1 && !!(await findMeeting("mI")));
+    check("MA8. duplicado GC/data: warning, sem consolidar (2 criados)", r.duplicateSameGcDate === 2 && !!(await findMeeting("mD1")) && !!(await findMeeting("mD2")));
+    check("MA9. GC não mapeado → SKIP", r.gcNotFound === 1 && r.skipped === 1 && (await findMeeting("mX")) === null);
+
+    const after = {
+      att: await prisma.growthGroupAttendance.count({ where: { tenantId: tid } }),
+      gcc: await prisma.growthGroupMembership.count({ where: { tenantId: tid } }),
+      person: await prisma.person.count({ where: { tenantId: tid } }),
+      user: await prisma.user.count(), role: await prisma.roleAssignment.count(),
+      meeting: await prisma.growthGroupMeeting.count({ where: { tenantId: tid } }),
+      map: await prisma.externalMapping.count({ where: { tenantId: tid, externalType: "growth_group_meeting" } }),
+    };
+    check("MA10. NÃO cria GrowthGroupAttendance", after.att === before.att && after.att === 0);
+    check("MA11. NÃO altera GrowthGroupMembership", after.gcc === before.gcc);
+    check("MA12. NÃO altera Person", after.person === before.person);
+    check("MA13. NÃO cria User", after.user === before.user);
+    check("MA14. NÃO cria RoleAssignment", after.role === before.role);
+
+    // MA6: idempotência
+    const r2 = await runGcMeetingsApply(prisma, { tenantId: tid, fileName: "test", meetings });
+    const fin = { meeting: await prisma.growthGroupMeeting.count({ where: { tenantId: tid } }), map: await prisma.externalMapping.count({ where: { tenantId: tid, externalType: "growth_group_meeting" } }) };
+    check("MA6. apply 2x não duplica (0 criados, contagens estáveis)", r2.created === 0 && fin.meeting === after.meeting && fin.map === after.map);
+    check("MAx. AuditLog import_meeting_create por criado", (await prisma.auditLog.count({ where: { tenantId: tid, action: "import_meeting_create" } })) === 6);
+  } catch (e) {
+    console.log(`  ⚠ MA. (skip) DB indisponível: ${e instanceof Error ? e.message : e}`);
+  } finally {
+    await prisma.$disconnect();
+  }
+})();
+
 // ── DRY-RUN de ENCONTROS e PRESENÇAS de GC (Fase 4A) ──────────────────────
 await (async () => {
   const prisma = new PrismaClient();
@@ -1444,6 +1531,12 @@ try {
   check("C6. resolutions:apply SEM --confirm falha (exit 2)", res.status === 2, `exit=${res.status}`);
 } catch {
   console.log("  ⚠ C6. (skip) não foi possível spawnar o CLI");
+}
+try {
+  const res = spawnSync("pnpm", ["prover:gc-meetings:apply", "--file", "./data/sample/x.zip"], { encoding: "utf8", timeout: 60000 });
+  check("C7. gc-meetings:apply SEM --confirm falha (exit 2)", res.status === 2, `exit=${res.status}`);
+} catch {
+  console.log("  ⚠ C7. (skip) não foi possível spawnar o CLI");
 }
 
 console.log(`\nResultado: ${passed} passou, ${failed} falhou.\n`);

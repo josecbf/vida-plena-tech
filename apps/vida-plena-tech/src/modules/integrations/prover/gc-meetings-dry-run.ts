@@ -182,7 +182,7 @@ export async function runGcMeetingsDryRun(
     items.push({
       tenantId, batchId: batch.id, externalType: "growth_group_meeting", externalId: m.encontroId || `NO_ID`,
       operation: op, matchStrategy: gcId ? "EXTERNAL_MAPPING" : "NONE", severity: op === "FAILED" ? "ERROR" : warns.length ? "WARNING" : "INFO",
-      targetType: "GrowthGroupMeeting", normalizedJson: { encontroId: m.encontroId, grupoId: m.grupoId, gcId, date: m.dateDay, status: m.status, happened: m.happened } as object,
+      targetType: "GrowthGroupMeeting", normalizedJson: { encontroId: m.encontroId, grupoId: m.grupoId, gcId, date: m.dateDay, status: m.sourceStatus, statusEnum: m.statusEnum, happened: m.happened } as object,
       warningsJson: { warnings: warns } as object, rawJson: { encontroId: m.encontroId, grupoId: m.grupoId } as object,
       status: op === "WOULD_CREATE" ? "PENDING" : status, message: `[${op}] meeting gc=${!!gcId} ${warns.join(",")}`,
     });

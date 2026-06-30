@@ -26,31 +26,53 @@ export function parseProverDateTime(s?: string | null): Date | null {
   return isNaN(date.getTime()) ? null : date;
 }
 
+export type MeetingStatusEnum = "SCHEDULED" | "HELD" | "CANCELED" | "UNKNOWN";
+
 export interface NormalizedGcMeeting {
   encontroId: string;
   grupoId: string;
   date: Date | null;
+  endAt: Date | null;
   dateDay: string | null; // yyyy-mm-dd p/ deduplicação por GC/dia
   tema: string | null;
   local: string | null;
-  status: string | null; // agendado | realizado | cancelado
+  notes: string | null; // observacao || resumo || pauta
+  sourceStatus: string | null; // status cru do Prover
+  statusEnum: MeetingStatusEnum;
   happened: boolean; // status === realizado
   cancelled: boolean; // status === cancelado
+  unknownStatus: boolean;
+  meta: { oferta: string | null; numCriancas: string | null; quilosDoados: string | null };
+}
+
+/** agendado→SCHEDULED, realizado→HELD, cancelado→CANCELED, outro→UNKNOWN. */
+export function meetingStatusEnum(rawStatus?: string | null): { statusEnum: MeetingStatusEnum; happened: boolean; cancelled: boolean; unknown: boolean } {
+  const s = (clean(rawStatus) ?? "").toLowerCase();
+  if (s === "realizado") return { statusEnum: "HELD", happened: true, cancelled: false, unknown: false };
+  if (s === "agendado") return { statusEnum: "SCHEDULED", happened: false, cancelled: false, unknown: false };
+  if (s === "cancelado") return { statusEnum: "CANCELED", happened: false, cancelled: true, unknown: false };
+  return { statusEnum: "UNKNOWN", happened: false, cancelled: false, unknown: true };
 }
 
 export function normalizeGcMeeting(raw: ProverGcMeeting): NormalizedGcMeeting {
   const date = parseProverDateTime(raw.data_inicio);
-  const status = (clean(raw.status) ?? "").toLowerCase() || null;
+  const sourceStatus = clean(raw.status);
+  const m = meetingStatusEnum(sourceStatus);
   return {
     encontroId: clean(raw.encontro_id) ?? "",
     grupoId: clean(raw.grupo_id) ?? "",
     date,
+    endAt: parseProverDateTime(raw.data_fim),
     dateDay: date ? date.toISOString().slice(0, 10) : null,
     tema: clean(raw.tema),
     local: clean(raw.local),
-    status,
-    happened: status === "realizado",
-    cancelled: status === "cancelado",
+    notes: clean(raw.observacao) ?? clean(raw.resumo) ?? clean(raw.pauta),
+    sourceStatus: sourceStatus ? sourceStatus.toLowerCase() : null,
+    statusEnum: m.statusEnum,
+    happened: m.happened,
+    cancelled: m.cancelled,
+    unknownStatus: m.unknown,
+    meta: { oferta: clean(raw.oferta), numCriancas: clean(raw.num_criancas), quilosDoados: clean(raw.quilos_doados) },
   };
 }
 
