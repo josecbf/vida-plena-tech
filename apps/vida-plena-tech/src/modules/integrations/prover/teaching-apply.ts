@@ -18,7 +18,7 @@ export interface TeachingApplyReport {
   teachingsCreated: number; modulesCreated: number; lessonsCreated: number; sessionsCreated: number;
   updated: number; skipped: number; failed: number;
   teachingsWithoutTitle: number; modulesWithoutTitle: number; lessonsWithoutModule: number; sessionsWithoutTeaching: number;
-  sessionsWithoutModuleOrLesson: number; warnings: number;
+  sessionsWithoutModuleOrLesson: number; sessionsModuleBackfilled: number; sessionsLessonBackfilled: number; warnings: number;
 }
 
 function clean(v?: string | null): string | null { const t = (v ?? "").toString().trim(); return t.length > 0 ? t : null; }
@@ -53,7 +53,7 @@ export async function runTeachingApply(
   const report: TeachingApplyReport = {
     batchId: "", teachingsRead: teachings.length, modulesRead: modules.length, lessonsRead: lessons.length, sessionsRead: sessions.length,
     teachingsCreated: 0, modulesCreated: 0, lessonsCreated: 0, sessionsCreated: 0, updated: 0, skipped: 0, failed: 0,
-    teachingsWithoutTitle: 0, modulesWithoutTitle: 0, lessonsWithoutModule: 0, sessionsWithoutTeaching: 0, sessionsWithoutModuleOrLesson: 0, warnings: 0,
+    teachingsWithoutTitle: 0, modulesWithoutTitle: 0, lessonsWithoutModule: 0, sessionsWithoutTeaching: 0, sessionsWithoutModuleOrLesson: 0, sessionsModuleBackfilled: 0, sessionsLessonBackfilled: 0, warnings: 0,
   };
   const batch = await prisma.importBatch.create({ data: { tenantId, mode: "APPLY", system: "PROVER", status: "PROCESSING", fileName, sourceFileHash: sourceFileHash ?? null, total: teachings.length + modules.length + lessons.length + sessions.length } });
   report.batchId = batch.id;
@@ -144,10 +144,27 @@ export async function runTeachingApply(
     else if (!teachingId) { w.push("TEACHING_PARENT_MAPPING_NOT_FOUND"); op = "SKIP"; report.skipped++; report.sessionsWithoutTeaching++; report.warnings++; }
     else if (!startsAt) { w.push("SESSION_WITHOUT_DATE"); op = "SKIP"; report.skipped++; report.warnings++; }
     else {
-      if ((modKey && !moduleId) || (auKey && !lessonId)) { w.push("MODULE_OR_LESSON_MAPPING_NOT_FOUND"); report.sessionsWithoutModuleOrLesson++; report.warnings++; }
       const existingId = sessionById.get(sid);
-      if (existingId) { targetId = existingId; op = "SKIP"; report.skipped++; w.push("ALREADY_IMPORTED"); }
-      else {
+      if (existingId) {
+        targetId = existingId;
+        // BACKFILL idempotente: preenche moduleId/lessonId AUSENTES agora que o mapping existe.
+        // NÃO altera título/data/ensino; se já preenchido, mantém; se mapping ainda não existe, warning.
+        const cur = await tx.teachingSession.findUnique({ where: { id: existingId }, select: { moduleId: true, lessonId: true } });
+        const patch: Prisma.TeachingSessionUncheckedUpdateInput = {};
+        if (cur && cur.moduleId == null && moduleId) { patch.moduleId = moduleId; w.push("TEACHING_SESSION_MODULE_BACKFILLED"); report.sessionsModuleBackfilled++; report.warnings++; }
+        if (cur && cur.lessonId == null && lessonId) { patch.lessonId = lessonId; w.push("TEACHING_SESSION_LESSON_BACKFILLED"); report.sessionsLessonBackfilled++; report.warnings++; }
+        if (Object.keys(patch).length > 0) {
+          await tx.teachingSession.update({ where: { id: existingId }, data: patch });
+          op = "UPDATE"; report.updated++;
+          await audit(tx, tenantId, actorUserId, "import_teaching_session_backfill", "TeachingSession", existingId, batch.id);
+        } else {
+          op = "SKIP"; report.skipped++;
+          const stillMissing = !!cur && ((cur.moduleId == null && modKey && !moduleId) || (cur.lessonId == null && auKey && !lessonId));
+          if (stillMissing) { w.push("MODULE_OR_LESSON_MAPPING_NOT_FOUND"); report.sessionsWithoutModuleOrLesson++; report.warnings++; }
+          else w.push("ALREADY_IMPORTED");
+        }
+      } else {
+        if ((modKey && !moduleId) || (auKey && !lessonId)) { w.push("MODULE_OR_LESSON_MAPPING_NOT_FOUND"); report.sessionsWithoutModuleOrLesson++; report.warnings++; }
         const c = await tx.teachingSession.create({ data: { tenantId, teachingId, moduleId, lessonId, title: clean(s.tema), subject: clean(s.materia), startsAt, endsAt: parseProverDateTime(s.dataFim), notes: clean(s.observacao), sourceStatus: null, metaJson: { uuidResponsavel: clean(s.uuidResponsavel) } as Prisma.InputJsonValue }, select: { id: true } });
         targetId = c.id; sessionById.set(sid, c.id);
         await tx.externalMapping.create({ data: { tenantId, system: "PROVER", externalType: "teaching_session", externalId: sid, internalType: "TeachingSession", internalId: c.id } });

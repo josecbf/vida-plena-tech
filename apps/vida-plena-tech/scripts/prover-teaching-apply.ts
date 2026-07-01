@@ -84,6 +84,7 @@ async function main() {
     console.log(line("Ensinos sem título / Módulos sem título", `${r.teachingsWithoutTitle} / ${r.modulesWithoutTitle}`));
     console.log(line("Aulas sem módulo / Sessões sem ensino pai", `${r.lessonsWithoutModule} / ${r.sessionsWithoutTeaching}`));
     console.log(line("Sessões sem módulo/aula (warning)", r.sessionsWithoutModuleOrLesson));
+    console.log(line("Backfill sessão módulo / aula", `${r.sessionsModuleBackfilled} / ${r.sessionsLessonBackfilled}`));
     console.log("═".repeat(62));
     console.log(line("Teaching ANTES → DEPOIS", `${before.teaching} → ${after.teaching}`));
     console.log(line("TeachingModule ANTES → DEPOIS", `${before.module} → ${after.module}`));

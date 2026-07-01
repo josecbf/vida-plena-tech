@@ -1472,6 +1472,81 @@ await (async () => {
   }
 })();
 
+// ── BACKFILL de vínculos TeachingSession → Module/Lesson (Fase 6B.1.1) ────
+await (async () => {
+  const prisma = new PrismaClient();
+  try {
+    const slug = "teachbackfill-test";
+    let t = await prisma.tenant.findUnique({ where: { slug } });
+    if (!t) t = await prisma.tenant.create({ data: { slug, name: "Teaching Backfill Test" } });
+    const tid = t.id;
+    await prisma.auditLog.deleteMany({ where: { tenantId: tid } });
+    await prisma.importBatchItem.deleteMany({ where: { tenantId: tid } });
+    await prisma.importBatch.deleteMany({ where: { tenantId: tid } });
+    await prisma.externalMapping.deleteMany({ where: { tenantId: tid } });
+    await prisma.teachingSession.deleteMany({ where: { tenantId: tid } });
+    await prisma.teachingLesson.deleteMany({ where: { tenantId: tid } });
+    await prisma.teachingModule.deleteMany({ where: { tenantId: tid } });
+    await prisma.teaching.deleteMany({ where: { tenantId: tid } });
+
+    // Teaching já importado
+    const teach = await prisma.teaching.create({ data: { tenantId: tid, title: "Curso", status: "FINISHED", startsAt: new Date("2024-01-01") } });
+    await prisma.externalMapping.create({ data: { tenantId: tid, system: "PROVER", externalType: "teaching", externalId: "uuid-T1", internalType: "Teaching", internalId: teach.id } });
+    // TeachingSession já importada, INCOMPLETA (moduleId/lessonId nulos) — como no lote --limit
+    const sess = await prisma.teachingSession.create({ data: { tenantId: tid, teachingId: teach.id, moduleId: null, lessonId: null, title: "Enc 1", startsAt: new Date("2024-01-01T20:00:00Z") } });
+    await prisma.externalMapping.create({ data: { tenantId: tid, system: "PROVER", externalType: "teaching_session", externalId: "e1", internalType: "TeachingSession", internalId: sess.id } });
+
+    const teachings: ProverTeaching[] = [{ uuid: "uuid-T1", tema: "Curso", dataInicio: "2024-01-01" }];
+    const sessRaw: ProverTeachingSession[] = [{ uuidEnsino: "uuid-T1", idEncontro: "e1", tema: "Enc 1", idModulo: "m1", idAula: "a1", dataInicio: "2024-01-01 20:00:00" }];
+
+    check("TB1. sessão já importada sem lessonId/moduleId", sess.moduleId === null && sess.lessonId === null);
+
+    // Run 1: mappings de módulo/aula AINDA não existem → warning, sem backfill, sem falha
+    const r1 = await runTeachingApply(prisma, { tenantId: tid, fileName: "t", teachings, modules: [], lessons: [], sessions: sessRaw });
+    const sessAfter1 = await prisma.teachingSession.findUniqueOrThrow({ where: { id: sess.id } });
+    check("TB6. mapping ainda não existe → warning, sem falhar", r1.sessionsModuleBackfilled === 0 && r1.sessionsLessonBackfilled === 0 && r1.failed === 0 && r1.sessionsWithoutModuleOrLesson === 1 && sessAfter1.moduleId === null);
+
+    // agora os mappings de módulo/aula passam a existir
+    const mod = await prisma.teachingModule.create({ data: { tenantId: tid, title: "Módulo 1" } });
+    await prisma.externalMapping.create({ data: { tenantId: tid, system: "PROVER", externalType: "teaching_module", externalId: "m1", internalType: "TeachingModule", internalId: mod.id } });
+    const les = await prisma.teachingLesson.create({ data: { tenantId: tid, moduleId: mod.id, title: "Aula 1" } });
+    await prisma.externalMapping.create({ data: { tenantId: tid, system: "PROVER", externalType: "teaching_lesson", externalId: "a1", internalType: "TeachingLesson", internalId: les.id } });
+
+    const before = {
+      teachingTitle: teach.title, teachingCount: await prisma.teaching.count({ where: { tenantId: tid } }),
+      lessonTitle: les.title, sessionCount: await prisma.teachingSession.count({ where: { tenantId: tid } }),
+      person: await prisma.person.count({ where: { tenantId: tid } }), user: await prisma.user.count(), role: await prisma.roleAssignment.count(),
+    };
+
+    // Run 2: BACKFILL preenche moduleId + lessonId
+    const r2 = await runTeachingApply(prisma, { tenantId: tid, fileName: "t", teachings, modules: [], lessons: [], sessions: sessRaw });
+    const sessAfter2 = await prisma.teachingSession.findUniqueOrThrow({ where: { id: sess.id } });
+    check("TB2. rerun preenche lessonId após mapping existir", sessAfter2.lessonId === les.id && r2.sessionsLessonBackfilled === 1);
+    check("TB3+TB4. rerun preenche moduleId após mapping existir", sessAfter2.moduleId === mod.id && r2.sessionsModuleBackfilled === 1 && r2.updated === 1 && r2.sessionsCreated === 0);
+    check("TBaudit. AuditLog import_teaching_session_backfill", (await prisma.auditLog.count({ where: { tenantId: tid, action: "import_teaching_session_backfill" } })) === 1);
+
+    // Run 3: já preenchido → não altera; idempotente
+    const r3 = await runTeachingApply(prisma, { tenantId: tid, fileName: "t", teachings, modules: [], lessons: [], sessions: sessRaw });
+    const sessAfter3 = await prisma.teachingSession.findUniqueOrThrow({ where: { id: sess.id } });
+    check("TB5. se lessonId já existe, não altera", sessAfter3.lessonId === les.id && sessAfter3.moduleId === mod.id);
+    check("TB7. idempotente após backfill (0 backfill na 3ª)", r3.sessionsModuleBackfilled === 0 && r3.sessionsLessonBackfilled === 0 && r3.updated === 0);
+
+    const after = {
+      teachingTitle: (await prisma.teaching.findUniqueOrThrow({ where: { id: teach.id } })).title, teachingCount: await prisma.teaching.count({ where: { tenantId: tid } }),
+      lessonTitle: (await prisma.teachingLesson.findUniqueOrThrow({ where: { id: les.id } })).title, sessionCount: await prisma.teachingSession.count({ where: { tenantId: tid } }),
+      person: await prisma.person.count({ where: { tenantId: tid } }), user: await prisma.user.count(), role: await prisma.roleAssignment.count(),
+    };
+    check("TB8. backfill NÃO cria nova TeachingSession", after.sessionCount === before.sessionCount && after.sessionCount === 1);
+    check("TB9. NÃO altera Teaching", after.teachingTitle === before.teachingTitle && after.teachingCount === before.teachingCount);
+    check("TB10. NÃO altera TeachingLesson", after.lessonTitle === before.lessonTitle);
+    check("TB11. NÃO altera Person/User/Role", after.person === before.person && after.user === before.user && after.role === before.role);
+  } catch (e) {
+    console.log(`  ⚠ TB. (skip) DB indisponível: ${e instanceof Error ? e.message : e}`);
+  } finally {
+    await prisma.$disconnect();
+  }
+})();
+
 // ── DRY-RUN de ENSINO/TD (Fase 6A) ────────────────────────────────────────
 await (async () => {
   const prisma = new PrismaClient();
