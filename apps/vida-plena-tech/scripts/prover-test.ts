@@ -40,6 +40,7 @@ import { runEventsApply } from "../src/modules/integrations/prover/events-apply"
 import { runEventRegistrationsApply } from "../src/modules/integrations/prover/event-registrations-apply";
 import { runEventAttendanceApply, classifyRegistrationCount } from "../src/modules/integrations/prover/event-attendance-apply";
 import { runTeachingDryRun } from "../src/modules/integrations/prover/teaching-dry-run";
+import { runTeachingApply } from "../src/modules/integrations/prover/teaching-apply";
 import type { ProverTeaching, ProverTeachingModule, ProverTeachingLesson, ProverTeachingSession, ProverTeachingRegistration, ProverTeachingAttendance } from "../src/modules/integrations/prover/types";
 import type { ProverEvent, ProverEventSession, ProverEventRegistration, ProverEventAttendance } from "../src/modules/integrations/prover/types";
 import type { ProverGcMeeting, ProverGcMeetingAttendance } from "../src/modules/integrations/prover/types";
@@ -1379,6 +1380,98 @@ await (async () => {
   }
 })();
 
+// ── APPLY da ESTRUTURA de Ensino (Fase 6B.1) ──────────────────────────────
+await (async () => {
+  const prisma = new PrismaClient();
+  try {
+    const slug = "teachapply-test";
+    let t = await prisma.tenant.findUnique({ where: { slug } });
+    if (!t) t = await prisma.tenant.create({ data: { slug, name: "Teaching Apply Test" } });
+    const tid = t.id;
+    await prisma.auditLog.deleteMany({ where: { tenantId: tid } });
+    await prisma.importBatchItem.deleteMany({ where: { tenantId: tid } });
+    await prisma.importBatch.deleteMany({ where: { tenantId: tid } });
+    await prisma.externalMapping.deleteMany({ where: { tenantId: tid } });
+    await prisma.teachingSession.deleteMany({ where: { tenantId: tid } });
+    await prisma.teachingLesson.deleteMany({ where: { tenantId: tid } });
+    await prisma.teachingModule.deleteMany({ where: { tenantId: tid } });
+    await prisma.teaching.deleteMany({ where: { tenantId: tid } });
+
+    const teachings: ProverTeaching[] = [
+      { uuid: "uuid-T1", tipo: "INTEGRAÇÃO", tema: "Curso Integração", dataInicio: "2024-01-01", dataFim: "2024-12-31", local: "Sede" }, // válido
+      { uuid: "uuid-T2", tema: null, dataInicio: "2024-02-01" }, // sem título
+    ];
+    const modules: ProverTeachingModule[] = [{ id: "m1", nome: "Módulo 1", media: "8.5", presenca: "90" }];
+    const lessons: ProverTeachingLesson[] = [
+      { id: "a1", idModulo: "m1", nome: "Aula 1", tempo: "60", ordem: "1" }, // módulo OK
+      { id: "a2", idModulo: "mX", nome: "Aula órfã" }, // módulo não resolve
+    ];
+    const sessions: ProverTeachingSession[] = [
+      { uuidEnsino: "uuid-T1", idEncontro: "e1", tema: "Enc 1", materia: "Mat", idModulo: "m1", idAula: "a1", dataInicio: "2024-01-01 20:00:00", dataFim: "2024-01-01 21:00:00" }, // pai+módulo+aula
+      { uuidEnsino: "uuid-T1", idEncontro: "e2", tema: "Enc 2", idModulo: "mX", dataInicio: "2024-01-08 20:00:00" }, // módulo não resolve → cria + warning
+      { uuidEnsino: "uuid-NONE", idEncontro: "e3", tema: "órfã", dataInicio: "2024-01-15 20:00:00" }, // sem ensino pai
+    ];
+
+    const before = {
+      teaching: await prisma.teaching.count({ where: { tenantId: tid } }),
+      module: await prisma.teachingModule.count({ where: { tenantId: tid } }),
+      lesson: await prisma.teachingLesson.count({ where: { tenantId: tid } }),
+      session: await prisma.teachingSession.count({ where: { tenantId: tid } }),
+      person: await prisma.person.count({ where: { tenantId: tid } }),
+      user: await prisma.user.count(), role: await prisma.roleAssignment.count(),
+    };
+
+    const r = await runTeachingApply(prisma, { tenantId: tid, fileName: "test", teachings, modules, lessons, sessions });
+
+    const byMap = async (et: string, eid: string) => prisma.externalMapping.findFirst({ where: { tenantId: tid, system: "PROVER", externalType: et, externalId: eid } });
+    const mT1 = await byMap("teaching", "uuid-T1"); const teachT1 = mT1 ? await prisma.teaching.findUnique({ where: { id: mT1.internalId } }) : null;
+    const mM1 = await byMap("teaching_module", "m1"); const modM1 = mM1 ? await prisma.teachingModule.findUnique({ where: { id: mM1.internalId } }) : null;
+    const mA1 = await byMap("teaching_lesson", "a1"); const lesA1 = mA1 ? await prisma.teachingLesson.findUnique({ where: { id: mA1.internalId } }) : null;
+    const mE1 = await byMap("teaching_session", "e1"); const sesE1 = mE1 ? await prisma.teachingSession.findUnique({ where: { id: mE1.internalId } }) : null;
+    const sesE2 = await (async () => { const m = await byMap("teaching_session", "e2"); return m ? prisma.teachingSession.findUnique({ where: { id: m.internalId } }) : null; })();
+
+    check("TL1. cria Teaching válido", teachT1?.title === "Curso Integração" && r.teachingsCreated === 1);
+    check("TL2. pula Teaching sem título", r.teachingsWithoutTitle === 1 && (await byMap("teaching", "uuid-T2")) === null);
+    check("TL3. cria ExternalMapping teaching", !!mT1 && teachT1?.sourceType === "INTEGRAÇÃO");
+    check("TL4. cria TeachingModule válido", modM1?.title === "Módulo 1" && r.modulesCreated === 1);
+    check("TL5. cria ExternalMapping teaching_module", !!mM1 && modM1?.average === 8.5);
+    check("TL6. cria TeachingLesson com módulo", lesA1?.moduleId === mM1?.internalId && r.lessonsCreated === 1);
+    check("TL7. pula TeachingLesson sem módulo", r.lessonsWithoutModule === 1 && (await byMap("teaching_lesson", "a2")) === null);
+    check("TL8. cria ExternalMapping teaching_lesson", !!mA1);
+    check("TL9. cria TeachingSession com ensino pai", sesE1?.teachingId === mT1?.internalId && r.sessionsCreated === 2);
+    check("TL10. sessão com módulo/aula resolvidos", sesE1?.moduleId === mM1?.internalId && sesE1?.lessonId === mA1?.internalId);
+    check("TL11. sessão sem módulo/aula (warning, ensino resolve)", !!sesE2 && sesE2?.moduleId === null && r.sessionsWithoutModuleOrLesson === 1);
+    check("TL12. pula TeachingSession sem ensino pai", r.sessionsWithoutTeaching === 1 && (await byMap("teaching_session", "e3")) === null);
+    check("TL13. cria ExternalMapping teaching_session", !!mE1);
+
+    const after = {
+      teaching: await prisma.teaching.count({ where: { tenantId: tid } }),
+      module: await prisma.teachingModule.count({ where: { tenantId: tid } }),
+      lesson: await prisma.teachingLesson.count({ where: { tenantId: tid } }),
+      session: await prisma.teachingSession.count({ where: { tenantId: tid } }),
+      person: await prisma.person.count({ where: { tenantId: tid } }),
+      user: await prisma.user.count(), role: await prisma.roleAssignment.count(),
+    };
+    check("TL18. NÃO cria TeachingRegistration (sem itens)", (await prisma.importBatchItem.count({ where: { tenantId: tid, externalType: "teaching_registration" } })) === 0);
+    check("TL19. NÃO cria TeachingAttendance (sem itens)", (await prisma.importBatchItem.count({ where: { tenantId: tid, externalType: "teaching_attendance" } })) === 0);
+    check("TL20. NÃO altera Person", after.person === before.person);
+    check("TL21. NÃO cria User", after.user === before.user);
+    check("TL22. NÃO cria RoleAssignment", after.role === before.role);
+
+    // TL14-17: idempotência
+    const r2 = await runTeachingApply(prisma, { tenantId: tid, fileName: "test", teachings, modules, lessons, sessions });
+    const fin = { teaching: await prisma.teaching.count({ where: { tenantId: tid } }), module: await prisma.teachingModule.count({ where: { tenantId: tid } }), lesson: await prisma.teachingLesson.count({ where: { tenantId: tid } }), session: await prisma.teachingSession.count({ where: { tenantId: tid } }) };
+    check("TL14. apply 2x não duplica Teaching", r2.teachingsCreated === 0 && fin.teaching === after.teaching);
+    check("TL15. apply 2x não duplica TeachingModule", r2.modulesCreated === 0 && fin.module === after.module);
+    check("TL16. apply 2x não duplica TeachingLesson", r2.lessonsCreated === 0 && fin.lesson === after.lesson);
+    check("TL17. apply 2x não duplica TeachingSession", r2.sessionsCreated === 0 && fin.session === after.session);
+  } catch (e) {
+    console.log(`  ⚠ TL. (skip) DB indisponível: ${e instanceof Error ? e.message : e}`);
+  } finally {
+    await prisma.$disconnect();
+  }
+})();
+
 // ── DRY-RUN de ENSINO/TD (Fase 6A) ────────────────────────────────────────
 await (async () => {
   const prisma = new PrismaClient();
@@ -2123,6 +2216,12 @@ try {
   check("C11. event-attendance:apply SEM --confirm falha (exit 2)", res.status === 2, `exit=${res.status}`);
 } catch {
   console.log("  ⚠ C11. (skip) não foi possível spawnar o CLI");
+}
+try {
+  const res = spawnSync("pnpm", ["prover:teaching:apply", "--file", "./data/sample/x.zip"], { encoding: "utf8", timeout: 60000 });
+  check("C12. teaching:apply SEM --confirm falha (exit 2)", res.status === 2, `exit=${res.status}`);
+} catch {
+  console.log("  ⚠ C12. (skip) não foi possível spawnar o CLI");
 }
 
 console.log(`\nResultado: ${passed} passou, ${failed} falhou.\n`);

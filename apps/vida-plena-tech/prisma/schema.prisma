@@ -865,6 +865,110 @@ model EventAttendance {
   @@index([personId])
 }
 
+// ── Ensino/TD (Fase 6B.1) — estrutura (curso → módulo → aula → sessão). Aditivo.
+enum TeachingStatus {
+  DRAFT
+  PUBLISHED
+  FINISHED
+}
+
+model Teaching {
+  id       String @id @default(cuid())
+  tenantId String
+
+  title       String
+  description String?
+  sourceType  String? // "tipo" do Prover
+  status      TeachingStatus @default(PUBLISHED)
+
+  startsAt DateTime?
+  endsAt   DateTime?
+  location String?
+
+  sourceStatus String? // export do Prover não traz status → null
+  metaJson     Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sessions TeachingSession[]
+
+  @@index([tenantId])
+  @@index([status])
+  @@index([startsAt])
+}
+
+model TeachingModule {
+  id       String @id @default(cuid())
+  tenantId String
+
+  title       String
+  description String?
+  order       Int?
+  average     Float?
+  presence    Float?
+  metaJson    Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lessons  TeachingLesson[]
+  sessions TeachingSession[]
+
+  @@index([tenantId])
+}
+
+model TeachingLesson {
+  id       String  @id @default(cuid())
+  tenantId String
+  moduleId String?
+
+  title       String
+  description String?
+  duration    Int?
+  order       Int?
+  metaJson    Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  module   TeachingModule?   @relation(fields: [moduleId], references: [id])
+  sessions TeachingSession[]
+
+  @@index([tenantId])
+  @@index([moduleId])
+}
+
+model TeachingSession {
+  id         String  @id @default(cuid())
+  tenantId   String
+  teachingId String
+  moduleId   String?
+  lessonId   String?
+
+  title        String?
+  subject      String?
+  startsAt     DateTime
+  endsAt       DateTime?
+  location     String?
+  notes        String?
+  sourceStatus String?
+  metaJson     Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  teaching Teaching        @relation(fields: [teachingId], references: [id])
+  module   TeachingModule? @relation(fields: [moduleId], references: [id])
+  lesson   TeachingLesson? @relation(fields: [lessonId], references: [id])
+
+  @@index([tenantId])
+  @@index([teachingId])
+  @@index([moduleId])
+  @@index([lessonId])
+  @@index([startsAt])
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // AUDITORIA + EVENTOS DE DOMÍNIO (forma canônica)
 // ─────────────────────────────────────────────────────────────────────────

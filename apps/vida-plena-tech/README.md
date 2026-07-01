@@ -547,6 +547,25 @@ aprovação** (`status`/`nota`/`aproveitamento`) é **detectada** e reportada; *
 **Não** cria dados de ensino, **não** altera `Person`/`User`/`Role`. Relatórios (fora do git):
 `teaching-dry-run-summary.json`, `teaching-dry-run-conflicts.csv`.
 
+#### Apply da estrutura de ensino (Fase 6B.1)
+
+```bash
+pnpm prover:teaching:apply --file ./data/export_prover_2026-06-27.zip --limit 50 --confirm APPLY
+pnpm prover:teaching:apply --file ./data/export_prover_2026-06-27.zip --confirm APPLY   # FULL (só com autorização)
+```
+
+Cria/atualiza **apenas** a estrutura (modelos aditivos `Teaching`, `TeachingModule`, `TeachingLesson`,
+`TeachingSession`) — **não** cria inscrição/presença. Processa em ordem (curso → módulo → aula →
+sessão), resolvendo pais por `ExternalMapping`. `Teaching`: `title=tema`, `sourceType=tipo`, datas,
+`status` derivado (`FINISHED` se passou, senão `PUBLISHED`; export sem status), `metaJson`
+(responsável/endereço). `TeachingLesson`: pai = `ExternalMapping(teaching_module)` do `idModulo` →
+`SKIP` `TEACHING_MODULE_MAPPING_NOT_FOUND` se não resolver. `TeachingSession`: pai = `teaching`
+(`SKIP` `TEACHING_PARENT_MAPPING_NOT_FOUND` se não resolver); `moduleId`/`lessonId` opcionais (warning
+se não resolverem, mas cria). Idempotente via `ExternalMapping` `teaching`/`teaching_module`/
+`teaching_lesson`/`teaching_session` (2× → 0 duplicados). `--confirm APPLY` obrigatório, `--limit`.
+Auditoria `import_teaching[_module|_lesson|_session]_create/update` (module `teaching`). **Nunca**
+cria inscrição/presença de ensino, altera `Person`/status, nem cria User/Role/financeiro.
+
 ### Testes das funções puras + DB
 
 ```bash

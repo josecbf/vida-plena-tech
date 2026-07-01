@@ -233,6 +233,9 @@ export interface ProverTeachingSession {
   materia?: string | null;
   dataInicio?: string | null;
   dataFim?: string | null;
+  observacao?: string | null;
+  pauta?: string | null;
+  resumo?: string | null;
   idAula?: string | null;
   idModulo?: string | null;
 }
