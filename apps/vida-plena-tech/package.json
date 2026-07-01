@@ -28,6 +28,7 @@
     "prover:gc-meetings:apply": "tsx scripts/prover-gc-meetings-apply.ts",
     "prover:gc-attendance:apply": "tsx scripts/prover-gc-attendance-apply.ts",
     "prover:events:dry-run": "tsx scripts/prover-events-dry-run.ts",
+    "prover:events:apply": "tsx scripts/prover-events-apply.ts",
     "prover:people:mapping-reconcile:dry-run": "tsx scripts/prover-people-mapping-reconcile-dry-run.ts",
     "prover:people:mapping-reconcile:apply": "tsx scripts/prover-people-mapping-reconcile-apply.ts",
     "prover:people:alias-mapping:dry-run": "tsx scripts/prover-people-alias-mapping-dry-run.ts",

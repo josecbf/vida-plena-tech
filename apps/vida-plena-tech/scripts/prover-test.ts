@@ -36,6 +36,7 @@ import { runGcMeetingsDryRun } from "../src/modules/integrations/prover/gc-meeti
 import { runGcMeetingsApply } from "../src/modules/integrations/prover/gc-meetings-apply";
 import { runGcAttendanceApply } from "../src/modules/integrations/prover/gc-attendance-apply";
 import { runEventsDryRun } from "../src/modules/integrations/prover/events-dry-run";
+import { runEventsApply } from "../src/modules/integrations/prover/events-apply";
 import type { ProverEvent, ProverEventSession, ProverEventRegistration, ProverEventAttendance } from "../src/modules/integrations/prover/types";
 import type { ProverGcMeeting, ProverGcMeetingAttendance } from "../src/modules/integrations/prover/types";
 import { readFileSync as readFileSyncCD } from "node:fs";
@@ -1101,6 +1102,84 @@ await (async () => {
   }
 })();
 
+// ── APPLY de EVENTOS + SESSÕES (Fase 5B.1) ────────────────────────────────
+await (async () => {
+  const prisma = new PrismaClient();
+  try {
+    const slug = "eventsapply-test";
+    let t = await prisma.tenant.findUnique({ where: { slug } });
+    if (!t) t = await prisma.tenant.create({ data: { slug, name: "Events Apply Test" } });
+    const tid = t.id;
+    await prisma.auditLog.deleteMany({ where: { tenantId: tid } });
+    await prisma.importBatchItem.deleteMany({ where: { tenantId: tid } });
+    await prisma.importBatch.deleteMany({ where: { tenantId: tid } });
+    await prisma.externalMapping.deleteMany({ where: { tenantId: tid } });
+    await prisma.eventSession.deleteMany({ where: { tenantId: tid } });
+    await prisma.eventRegistration.deleteMany({ where: { tenantId: tid } });
+    await prisma.event.deleteMany({ where: { tenantId: tid } });
+
+    const events: ProverEvent[] = [
+      { uuid: "uuid-E1", tipo: "RETIRO", tema: "Retiro 2023", dataInicio: "2023-01-01", dataFim: "2023-01-03", local: "Sede" }, // válido
+      { uuid: "uuid-E2", tema: null, dataInicio: "2023-02-01" }, // sem título
+      { uuid: "uuid-E3", tema: "Sem data", dataInicio: null },   // sem data
+    ];
+    const sessions: ProverEventSession[] = [
+      { uuidEvento: "uuid-E1", idEncontro: "s1", tema: "Dia 1", dataInicio: "2023-01-01 08:00:00", dataFim: "2023-01-01 18:00:00" }, // pai OK
+      { uuidEvento: "uuid-NONE", idEncontro: "s2", tema: "orfã", dataInicio: "2023-01-01 08:00:00" }, // sem pai
+    ];
+
+    const before = {
+      event: await prisma.event.count({ where: { tenantId: tid } }),
+      session: await prisma.eventSession.count({ where: { tenantId: tid } }),
+      reg: await prisma.eventRegistration.count({ where: { tenantId: tid } }),
+      person: await prisma.person.count({ where: { tenantId: tid } }),
+      user: await prisma.user.count(), role: await prisma.roleAssignment.count(),
+    };
+
+    const r = await runEventsApply(prisma, { tenantId: tid, fileName: "test", events, sessions });
+
+    const findByMap = async (externalType: string, externalId: string) => {
+      const m = await prisma.externalMapping.findFirst({ where: { tenantId: tid, system: "PROVER", externalType, externalId } });
+      return m;
+    };
+    const mapE1 = await findByMap("event", "uuid-E1");
+    const ev1 = mapE1 ? await prisma.event.findUnique({ where: { id: mapE1.internalId } }) : null;
+    const mapS1 = await findByMap("event_session", "s1");
+    const s1 = mapS1 ? await prisma.eventSession.findUnique({ where: { id: mapS1.internalId } }) : null;
+
+    check("EA1. cria Event válido", ev1?.title === "Retiro 2023" && r.eventsCreated === 1);
+    check("EA2. pula Event sem título", r.eventsWithoutTitle === 1 && (await findByMap("event", "uuid-E2")) === null);
+    check("EA3. pula Event sem data", r.eventsWithoutDate === 1 && (await findByMap("event", "uuid-E3")) === null);
+    check("EA4. cria ExternalMapping event", !!mapE1 && ev1?.sourceType === "RETIRO");
+    check("EA5. cria EventSession com evento pai", !!s1 && s1?.eventId === mapE1?.internalId && r.sessionsCreated === 1);
+    check("EA6. pula EventSession sem evento pai", r.sessionsWithoutParent === 1 && (await findByMap("event_session", "s2")) === null);
+    check("EA7. cria ExternalMapping event_session", !!mapS1);
+
+    const after = {
+      event: await prisma.event.count({ where: { tenantId: tid } }),
+      session: await prisma.eventSession.count({ where: { tenantId: tid } }),
+      reg: await prisma.eventRegistration.count({ where: { tenantId: tid } }),
+      person: await prisma.person.count({ where: { tenantId: tid } }),
+      user: await prisma.user.count(), role: await prisma.roleAssignment.count(),
+    };
+    check("EA10. NÃO cria EventRegistration", after.reg === before.reg && after.reg === 0);
+    check("EA11. NÃO grava inscrição/presença (só event/event_session)", (await prisma.importBatchItem.count({ where: { tenantId: tid, externalType: { in: ["event_registration", "event_attendance"] } } })) === 0);
+    check("EA12. NÃO altera Person", after.person === before.person);
+    check("EA13. NÃO cria User", after.user === before.user);
+    check("EA14. NÃO cria RoleAssignment", after.role === before.role);
+
+    // EA8/EA9: idempotência
+    const r2 = await runEventsApply(prisma, { tenantId: tid, fileName: "test", events, sessions });
+    const fin = { event: await prisma.event.count({ where: { tenantId: tid } }), session: await prisma.eventSession.count({ where: { tenantId: tid } }), mapE: await prisma.externalMapping.count({ where: { tenantId: tid, externalType: "event" } }), mapS: await prisma.externalMapping.count({ where: { tenantId: tid, externalType: "event_session" } }) };
+    check("EA8. apply 2x não duplica Event", r2.eventsCreated === 0 && fin.event === after.event && fin.mapE === 1);
+    check("EA9. apply 2x não duplica EventSession", r2.sessionsCreated === 0 && fin.session === after.session && fin.mapS === 1);
+  } catch (e) {
+    console.log(`  ⚠ EA. (skip) DB indisponível: ${e instanceof Error ? e.message : e}`);
+  } finally {
+    await prisma.$disconnect();
+  }
+})();
+
 // ── DRY-RUN de EVENTOS (Fase 5A) ──────────────────────────────────────────
 await (async () => {
   const prisma = new PrismaClient();
@@ -1737,6 +1816,12 @@ try {
   check("C8. gc-attendance:apply SEM --confirm falha (exit 2)", res.status === 2, `exit=${res.status}`);
 } catch {
   console.log("  ⚠ C8. (skip) não foi possível spawnar o CLI");
+}
+try {
+  const res = spawnSync("pnpm", ["prover:events:apply", "--file", "./data/sample/x.zip"], { encoding: "utf8", timeout: 60000 });
+  check("C9. events:apply SEM --confirm falha (exit 2)", res.status === 2, `exit=${res.status}`);
+} catch {
+  console.log("  ⚠ C9. (skip) não foi possível spawnar o CLI");
 }
 
 console.log(`\nResultado: ${passed} passou, ${failed} falhou.\n`);

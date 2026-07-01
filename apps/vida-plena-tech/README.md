@@ -456,7 +456,7 @@ Lê e entende os 4 arquivos de evento **sem escrever nada real** (só `ImportBat
 | `evento_presenca_eventos.json` | **Presença** (nível sessão) | `idEncontro` + `uuidPessoa` + `idEventoInscricao`, `presenca` "1"/"0" |
 
 Resolve pessoa por `ExternalMapping(person)`; propõe as chaves externas `event`/`event_session`/
-`event_registration`/`event_attendance` (não cria mapping real). Detecta: `EVENT_WITHOUT_TITLE/DATE`,
+`event_registration`/`event_attendance` (não cria mapping real, exceto na Fase 5B.1). Detecta: `EVENT_WITHOUT_TITLE/DATE`,
 `EVENT_STATUS_UNKNOWN`, `SESSION_WITHOUT_PARENT_EVENT`, `PERSON_MAPPING_NOT_FOUND`,
 `REGISTRATION_EVENT_NOT_FOUND`, `REGISTRATION_DUPLICATE`, `ATTENDANCE_SESSION_NOT_FOUND`,
 `ATTENDANCE_WITHOUT_REGISTRATION`, `ATTENDANCE_DUPLICATE`, `PAYMENT_FIELDS_IGNORED`. **Pagamento/lote/
@@ -464,6 +464,23 @@ financeiro** (campos das inscrições + `evento_regras_*`/`evento_resumos_evento
 documentados e ignorados**. **Não** cria `Event`/`EventRegistration`/presença, **não** altera
 `Person`/`User`/`Role`. Relatórios (fora do git): `events-dry-run-summary.json`,
 `events-dry-run-conflicts.csv`.
+
+#### Apply de eventos + sessões (Fase 5B.1)
+
+```bash
+pnpm prover:events:apply --file ./data/export_prover_2026-06-27.zip --limit 100 --confirm APPLY
+pnpm prover:events:apply --file ./data/export_prover_2026-06-27.zip --confirm APPLY   # FULL (só com autorização)
+```
+
+Cria/atualiza **apenas** `Event` (de `evento_eventos.json`) e `EventSession` (novo modelo aditivo, de
+`evento_encontros_eventos.json`) — **não** cria inscrição/presença/pagamento. `Event`: `title=tema`,
+`startsAt/endsAt`, `location=local`, `sourceType=tipo`, `metaJson` (endereço/responsável), `status`
+derivado (`FINISHED` se já passou, senão `PUBLISHED` — o export não traz status). `EventSession`:
+pai resolvido por `ExternalMapping(event)` do `uuidEvento` → `EVENT_PARENT_MAPPING_NOT_FOUND` se não
+resolver; `sourceStatus` nulo. Idempotente via `ExternalMapping` `event`/`event_session` (2× → 0
+duplicados). Evento sem título/data → `SKIP`. `--confirm APPLY` obrigatório, `--limit` suportado.
+Auditoria `import_event_create/update`, `import_event_session_create/update`. **Nunca** cria
+`EventRegistration`/presença, altera `Person`/status, nem cria User/Role.
 
 ### Testes das funções puras + DB
 

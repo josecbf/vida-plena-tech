@@ -755,11 +755,41 @@ model Event {
   updatedAt   DateTime        @updatedAt
   archivedAt  DateTime?
 
+  // Fase 5B.1 — campos aditivos (importação de eventos do Prover)
+  sourceType String? // "tipo" do Prover (ex.: ENCONTRO COM DEUS)
+  metaJson   Json?   // endereço/responsável/sourceStatus etc.
+
   tenant        Tenant              @relation(fields: [tenantId], references: [id])
   campus        Campus?             @relation(fields: [campusId], references: [id])
   registrations EventRegistration[]
+  sessions      EventSession[]
 
   @@index([tenantId])
+}
+
+/// Sessão/encontro de um evento (Prover: evento_encontros_eventos). Aditivo.
+model EventSession {
+  id       String @id @default(cuid())
+  tenantId String
+  eventId  String
+
+  title    String?
+  startsAt DateTime
+  endsAt   DateTime?
+  location String?
+  notes    String?
+
+  sourceStatus String? // export do Prover não traz status → null
+  metaJson     Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  event Event @relation(fields: [eventId], references: [id])
+
+  @@index([tenantId])
+  @@index([eventId])
+  @@index([startsAt])
 }
 
 model EventRegistration {
