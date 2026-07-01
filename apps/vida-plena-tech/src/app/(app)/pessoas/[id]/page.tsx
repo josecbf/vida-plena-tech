@@ -71,6 +71,18 @@ export default async function PersonPage({
     take: 8,
   });
 
+  // Eventos (somente leitura): inscrições recentes + total de presenças. Separado do GC.
+  const [eventRegs, eventRegCount, eventPresentCount] = await Promise.all([
+    prisma.eventRegistration.findMany({
+      where: { tenantId: ctx.tenantId, personId: id },
+      include: { event: { select: { id: true, title: true, startsAt: true } } },
+      orderBy: [{ sourceRegisteredAt: "desc" }, { createdAt: "desc" }],
+      take: 6,
+    }),
+    prisma.eventRegistration.count({ where: { tenantId: ctx.tenantId, personId: id } }),
+    prisma.eventAttendance.count({ where: { tenantId: ctx.tenantId, personId: id, status: "PRESENT" } }),
+  ]);
+
   const canSensitive = can(ctx, "people.timeline_sensitive.view");
   const canFullCpf = can(ctx, "people.cpf.view_full");
 
@@ -363,6 +375,31 @@ export default async function PersonPage({
                     </Badge>
                   </Link>
                 ))
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Eventos</CardTitle>
+              <CardDescription>Inscrições em eventos · {eventPresentCount} presença(s) registrada(s).</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-1.5 text-sm">
+              {eventRegs.length === 0 ? (
+                <p className="text-sm text-mist">Nenhuma inscrição em evento.</p>
+              ) : (
+                <>
+                  {eventRegs.map((r) => (
+                    <Link key={r.id} href={`/eventos/${r.eventId}`} className="flex items-center justify-between gap-2 rounded-md p-1 hover:bg-ink/[0.03]">
+                      <span className="min-w-0">
+                        <span className="block truncate">{r.event.title}</span>
+                        <span className="text-xs text-mist">{formatDate(r.event.startsAt)}</span>
+                      </span>
+                      <Badge variant="outline">Inscrito</Badge>
+                    </Link>
+                  ))}
+                  {eventRegCount > 6 ? <p className="px-1 text-xs text-mist">+{eventRegCount - 6} inscrição(ões)</p> : null}
+                </>
               )}
             </CardContent>
           </Card>
