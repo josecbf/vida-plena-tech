@@ -250,6 +250,7 @@ export interface ProverTeachingRegistration {
   nota?: string | null; // conclusão/aprovação
   lote?: string | null;
   valorLote?: string | null;
+  valorDesconto?: string | null;
   valorTotal?: string | null;
   formaPagamento?: string | null;
   idResumo?: string | null;

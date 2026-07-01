@@ -375,6 +375,7 @@ model Person {
   attendances     GrowthGroupAttendance[]
   eventRegs       EventRegistration[]
   eventAttendances EventAttendance[]
+  teachingRegs    TeachingRegistration[]
   leadershipMemberships LeadershipUnitMember[]
 
   // Vínculos familiares (dois lados da relação)
@@ -872,6 +873,13 @@ enum TeachingStatus {
   FINISHED
 }
 
+enum TeachingRegistrationStatus {
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  UNKNOWN
+}
+
 model Teaching {
   id       String @id @default(cuid())
   tenantId String
@@ -891,7 +899,8 @@ model Teaching {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  sessions TeachingSession[]
+  sessions      TeachingSession[]
+  registrations TeachingRegistration[]
 
   @@index([tenantId])
   @@index([status])
@@ -967,6 +976,37 @@ model TeachingSession {
   @@index([moduleId])
   @@index([lessonId])
   @@index([startsAt])
+}
+
+model TeachingRegistration {
+  id       String @id @default(cuid())
+  tenantId String
+
+  teachingId String
+  personId   String
+
+  status             TeachingRegistrationStatus @default(IN_PROGRESS)
+  source             String?
+  sourceStatus       String?
+  sourceRegisteredAt DateTime?
+
+  grade       Float?
+  sourceGrade String?
+
+  sourcePaymentJson Json?
+  metaJson          Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  teaching Teaching @relation(fields: [teachingId], references: [id])
+  person   Person   @relation(fields: [personId], references: [id])
+
+  @@unique([teachingId, personId])
+  @@index([tenantId])
+  @@index([teachingId])
+  @@index([personId])
+  @@index([status])
 }
 
 // ─────────────────────────────────────────────────────────────────────────

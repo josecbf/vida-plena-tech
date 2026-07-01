@@ -41,6 +41,7 @@ import { runEventRegistrationsApply } from "../src/modules/integrations/prover/e
 import { runEventAttendanceApply, classifyRegistrationCount } from "../src/modules/integrations/prover/event-attendance-apply";
 import { runTeachingDryRun } from "../src/modules/integrations/prover/teaching-dry-run";
 import { runTeachingApply } from "../src/modules/integrations/prover/teaching-apply";
+import { runTeachingRegistrationsApply } from "../src/modules/integrations/prover/teaching-registrations-apply";
 import type { ProverTeaching, ProverTeachingModule, ProverTeachingLesson, ProverTeachingSession, ProverTeachingRegistration, ProverTeachingAttendance } from "../src/modules/integrations/prover/types";
 import type { ProverEvent, ProverEventSession, ProverEventRegistration, ProverEventAttendance } from "../src/modules/integrations/prover/types";
 import type { ProverGcMeeting, ProverGcMeetingAttendance } from "../src/modules/integrations/prover/types";
@@ -1547,6 +1548,105 @@ await (async () => {
   }
 })();
 
+// ── APPLY de INSCRIÇÕES de Ensino (Fase 6B.2) ─────────────────────────────
+await (async () => {
+  const prisma = new PrismaClient();
+  try {
+    const slug = "teachreg-test";
+    let t = await prisma.tenant.findUnique({ where: { slug } });
+    if (!t) t = await prisma.tenant.create({ data: { slug, name: "Teaching Reg Test" } });
+    const tid = t.id;
+    await prisma.auditLog.deleteMany({ where: { tenantId: tid } });
+    await prisma.importBatchItem.deleteMany({ where: { tenantId: tid } });
+    await prisma.importBatch.deleteMany({ where: { tenantId: tid } });
+    await prisma.teachingRegistration.deleteMany({ where: { tenantId: tid } });
+    await prisma.externalMapping.deleteMany({ where: { tenantId: tid } });
+    await prisma.teachingSession.deleteMany({ where: { tenantId: tid } });
+    await prisma.teachingLesson.deleteMany({ where: { tenantId: tid } });
+    await prisma.teachingModule.deleteMany({ where: { tenantId: tid } });
+    await prisma.teaching.deleteMany({ where: { tenantId: tid } });
+    await prisma.person.deleteMany({ where: { tenantId: tid } });
+
+    const mkP = async (uuid: string, status: "VISITOR" | "MEMBER" = "VISITOR") => {
+      const p = await prisma.person.create({ data: { tenantId: tid, fullName: uuid, status } });
+      await prisma.externalMapping.create({ data: { tenantId: tid, system: "PROVER", externalType: "person", externalId: uuid, internalType: "Person", internalId: p.id } });
+      return p;
+    };
+    const teach = await prisma.teaching.create({ data: { tenantId: tid, title: "TD 1", status: "FINISHED", startsAt: new Date("2023-01-01") } });
+    await prisma.externalMapping.create({ data: { tenantId: tid, system: "PROVER", externalType: "teaching", externalId: "uuid-T1", internalType: "Teaching", internalId: teach.id } });
+    const pC = await mkP("uuid-C"); const pG = await mkP("uuid-G", "MEMBER"); const pD = await mkP("uuid-D"); const pQ = await mkP("uuid-Q");
+
+    const registrations: ProverTeachingRegistration[] = [
+      { uuidEnsino: "uuid-T1", uuidPessoa: "uuid-C", dataInscricao: "2023-01-01 10:00:00", status: "Cursando", nota: "0", valorTotal: "100", lote: "L1", formaPagamento: "PIX", idResumo: "R1" }, // resolvida + pagamento + nota numérica
+      { uuidEnsino: "uuid-T1", uuidPessoa: "uuid-G", dataInscricao: "2023-01-02 10:00:00", status: "Aprovado", nota: "APROVADO", idResumo: "R2" }, // nota não-numérica
+      { uuidEnsino: "uuid-NONE", uuidPessoa: "uuid-C" }, // ensino não resolvido
+      { uuidEnsino: "uuid-T1", uuidPessoa: "uuid-UNKNOWN" }, // pessoa não resolvida
+      { uuidEnsino: "uuid-T1", uuidPessoa: "uuid-D", status: "Cursando", nota: "0", idResumo: "R3" }, // dup simples
+      { uuidEnsino: "uuid-T1", uuidPessoa: "uuid-D", status: "Cursando", nota: "0", idResumo: "R4" }, // dup simples (idResumo divergente, conteúdo idêntico)
+      { uuidEnsino: "uuid-T1", uuidPessoa: "uuid-Q", status: "Cursando", nota: "0", idResumo: "R5" }, // dup conflitante
+      { uuidEnsino: "uuid-T1", uuidPessoa: "uuid-Q", status: "Cancelado", nota: "0", idResumo: "R6" }, // dup conflitante (status divergente)
+    ];
+
+    const before = {
+      reg: await prisma.teachingRegistration.count({ where: { tenantId: tid } }),
+      teaching: await prisma.teaching.count({ where: { tenantId: tid } }),
+      module: await prisma.teachingModule.count({ where: { tenantId: tid } }),
+      lesson: await prisma.teachingLesson.count({ where: { tenantId: tid } }),
+      session: await prisma.teachingSession.count({ where: { tenantId: tid } }),
+      person: await prisma.person.count({ where: { tenantId: tid } }),
+      member: await prisma.person.count({ where: { tenantId: tid, status: "MEMBER" } }),
+      user: await prisma.user.count(), role: await prisma.roleAssignment.count(),
+      statuses: Object.fromEntries((await prisma.person.findMany({ where: { tenantId: tid }, select: { id: true, status: true } })).map((p) => [p.id, p.status])),
+    };
+
+    const r = await runTeachingRegistrationsApply(prisma, { tenantId: tid, fileName: "test", registrations });
+
+    const regC = await prisma.teachingRegistration.findFirst({ where: { tenantId: tid, teachingId: teach.id, personId: pC.id } });
+    const regG = await prisma.teachingRegistration.findFirst({ where: { tenantId: tid, teachingId: teach.id, personId: pG.id } });
+    const mapC = await prisma.externalMapping.findFirst({ where: { tenantId: tid, externalType: "teaching_registration", externalId: "uuid-T1:uuid-C" } });
+
+    check("TR1. cria inscrição com ensino e pessoa resolvidos", !!regC && regC.source === "PROVER" && r.created === 3);
+    check("TR2. pula inscrição sem ensino resolvido", r.teachingNotFound === 1);
+    check("TR3. pula inscrição sem pessoa resolvida", r.personNotFound === 1);
+    check("TR4. cria ExternalMapping(teaching_registration)", mapC?.internalId === regC?.id);
+    check("TR5. mapeia 'Cursando' para IN_PROGRESS", regC?.status === "IN_PROGRESS");
+    check("TR6. preserva sourceStatus", regC?.sourceStatus === "Cursando");
+    check("TR7. preserva nota numérica como grade", regC?.grade === 0 && regC?.sourceGrade === null && r.gradeNumeric === 2);
+    check("TR8. preserva nota não-numérica em sourceGrade", regG?.grade === null && regG?.sourceGrade === "APROVADO" && r.gradePreserved === 1);
+    check("TR9. preserva pagamento/lote apenas em metadata", !!(regC?.sourcePaymentJson as { valorTotal?: string })?.valorTotal && r.paymentPreserved === 1);
+    check("TR10. NÃO cria financeiro (sem cobrança; só metadata)", r.paymentDetected === 1 && (regC?.sourcePaymentJson as { valorTotal?: string })?.valorTotal === "100");
+    check("TR11. duplicidade simples não duplica", r.duplicateSimple === 1 && (await prisma.teachingRegistration.count({ where: { tenantId: tid, personId: pD.id } })) === 1);
+    check("TR12. duplicidade conflitante vira SKIP", r.duplicateConflict === 2 && (await prisma.teachingRegistration.count({ where: { tenantId: tid, personId: pQ.id } })) === 0);
+
+    const after = {
+      reg: await prisma.teachingRegistration.count({ where: { tenantId: tid } }),
+      teaching: await prisma.teaching.count({ where: { tenantId: tid } }),
+      module: await prisma.teachingModule.count({ where: { tenantId: tid } }),
+      lesson: await prisma.teachingLesson.count({ where: { tenantId: tid } }),
+      session: await prisma.teachingSession.count({ where: { tenantId: tid } }),
+      person: await prisma.person.count({ where: { tenantId: tid } }),
+      member: await prisma.person.count({ where: { tenantId: tid, status: "MEMBER" } }),
+      user: await prisma.user.count(), role: await prisma.roleAssignment.count(),
+      statuses: Object.fromEntries((await prisma.person.findMany({ where: { tenantId: tid }, select: { id: true, status: true } })).map((p) => [p.id, p.status])),
+    };
+    check("TR14. NÃO cria TeachingAttendance (só teaching_registration)", (await prisma.importBatchItem.count({ where: { tenantId: tid, externalType: "teaching_attendance" } })) === 0);
+    check("TR15. NÃO altera Teaching/Module/Lesson/Session", after.teaching === before.teaching && after.module === before.module && after.lesson === before.lesson && after.session === before.session);
+    check("TR16. NÃO altera Person", after.person === before.person);
+    check("TR17. NÃO altera status eclesiástico", JSON.stringify(after.statuses) === JSON.stringify(before.statuses) && after.member === before.member);
+    check("TR18. NÃO cria User", after.user === before.user);
+    check("TR19. NÃO cria RoleAssignment", after.role === before.role);
+
+    // TR13: idempotência
+    const r2 = await runTeachingRegistrationsApply(prisma, { tenantId: tid, fileName: "test", registrations });
+    const fin = { reg: await prisma.teachingRegistration.count({ where: { tenantId: tid } }), map: await prisma.externalMapping.count({ where: { tenantId: tid, externalType: "teaching_registration" } }) };
+    check("TR13. apply 2x não duplica inscrição", r2.created === 0 && fin.reg === after.reg && fin.map === r.created);
+  } catch (e) {
+    console.log(`  ⚠ TR. (skip) DB indisponível: ${e instanceof Error ? e.message : e}`);
+  } finally {
+    await prisma.$disconnect();
+  }
+})();
+
 // ── DRY-RUN de ENSINO/TD (Fase 6A) ────────────────────────────────────────
 await (async () => {
   const prisma = new PrismaClient();
@@ -2297,6 +2397,12 @@ try {
   check("C12. teaching:apply SEM --confirm falha (exit 2)", res.status === 2, `exit=${res.status}`);
 } catch {
   console.log("  ⚠ C12. (skip) não foi possível spawnar o CLI");
+}
+try {
+  const res = spawnSync("pnpm", ["prover:teaching-registrations:apply", "--file", "./data/sample/x.zip"], { encoding: "utf8", timeout: 60000 });
+  check("C13. teaching-registrations:apply SEM --confirm falha (exit 2)", res.status === 2, `exit=${res.status}`);
+} catch {
+  console.log("  ⚠ C13. (skip) não foi possível spawnar o CLI");
 }
 
 console.log(`\nResultado: ${passed} passou, ${failed} falhou.\n`);
