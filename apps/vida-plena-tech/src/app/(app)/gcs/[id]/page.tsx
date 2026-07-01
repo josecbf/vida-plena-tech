@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/misc";
 import { Button } from "@/components/ui/button";
 import { weekdayLabel, formatDate } from "@/lib/format";
-import { STATUS_LABEL, ATTENDANCE_LABEL, MEMBERSHIP_SOURCE_LABEL } from "@/lib/labels";
+import { STATUS_LABEL, ATTENDANCE_LABEL, MEMBERSHIP_SOURCE_LABEL, MEETING_STATUS_LABEL, meetingStatusVariant } from "@/lib/labels";
 import { InviteLinkBox, NewMeetingForm } from "./gc-actions";
 
 function Stat({ label, value }: { label: string; value: number | string }) {
@@ -214,7 +214,8 @@ export default async function GcDetailPage({
                   <THead>
                     <TR>
                       <TH>Data</TH>
-                      <TH>Aconteceu</TH>
+                      <TH>Status</TH>
+                      <TH>Tema</TH>
                       <TH>Presença</TH>
                       <TH></TH>
                     </TR>
@@ -232,12 +233,9 @@ export default async function GcDetailPage({
                         <TR key={m.id}>
                           <TD className="text-sm">{formatDate(m.date)}</TD>
                           <TD>
-                            {m.happened ? (
-                              <Badge variant="success">Sim</Badge>
-                            ) : (
-                              <Badge variant="muted">Cancelado</Badge>
-                            )}
+                            <Badge variant={meetingStatusVariant(m.status)}>{MEETING_STATUS_LABEL[m.status]}</Badge>
                           </TD>
+                          <TD className="text-xs text-mist">{m.title ?? "—"}</TD>
                           <TD className="text-xs text-mist">
                             {m.attendances.length === 0
                               ? "Sem registro"

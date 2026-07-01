@@ -24,6 +24,7 @@ import {
   TIMELINE_LABEL,
   SOURCE_LABEL,
   MEMBERSHIP_SOURCE_LABEL,
+  ATTENDANCE_LABEL,
 } from "@/lib/labels";
 import { maskCpf, formatCpf, formatDate, formatDateTime } from "@/lib/format";
 import {
@@ -61,6 +62,14 @@ export default async function PersonPage({
   // o "GC principal" (primaryGc), que é uma escolha curatorial separada.
   const gcActive = person.gcHistory.filter((m) => m.leftAt === null);
   const gcPast = person.gcHistory.filter((m) => m.leftAt !== null);
+
+  // Frequência recente (somente leitura): últimos encontros em que apareceu.
+  const recentAttendance = await prisma.growthGroupAttendance.findMany({
+    where: { tenantId: ctx.tenantId, personId: id },
+    include: { meeting: { select: { date: true, gcId: true, gc: { select: { name: true } } } } },
+    orderBy: { meeting: { date: "desc" } },
+    take: 8,
+  });
 
   const canSensitive = can(ctx, "people.timeline_sensitive.view");
   const canFullCpf = can(ctx, "people.cpf.view_full");
@@ -330,6 +339,30 @@ export default async function PersonPage({
                     <p className="px-1 text-xs text-mist">+{gcPast.length - 8} vínculo(s) histórico(s)</p>
                   ) : null}
                 </>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Frequência recente</CardTitle>
+              <CardDescription>Últimos encontros de GC em que a pessoa aparece.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-1.5 text-sm">
+              {recentAttendance.length === 0 ? (
+                <p className="text-sm text-mist">Nenhuma presença registrada.</p>
+              ) : (
+                recentAttendance.map((a) => (
+                  <Link key={a.id} href={`/gcs/${a.meeting.gcId}`} className="flex items-center justify-between gap-2 rounded-md p-1 hover:bg-ink/[0.03]">
+                    <span className="min-w-0">
+                      <span className="block truncate">{a.meeting.gc.name}</span>
+                      <span className="text-xs text-mist">{formatDate(a.meeting.date)}</span>
+                    </span>
+                    <Badge variant={a.status === "PRESENT" ? "success" : a.status === "VISITOR" ? "outline" : "muted"}>
+                      {ATTENDANCE_LABEL[a.status]}
+                    </Badge>
+                  </Link>
+                ))
               )}
             </CardContent>
           </Card>

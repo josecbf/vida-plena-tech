@@ -6,6 +6,7 @@ import {
   FamilyRelationship,
   TimelineEntryType,
   GrowthGroupMembershipSource,
+  GrowthGroupMeetingStatus,
 } from "@prisma/client";
 
 export const MEMBERSHIP_SOURCE_LABEL: Record<GrowthGroupMembershipSource, string> = {
@@ -14,6 +15,17 @@ export const MEMBERSHIP_SOURCE_LABEL: Record<GrowthGroupMembershipSource, string
   MANUAL: "Manual",
   IMPORTED: "Importado",
 };
+
+export const MEETING_STATUS_LABEL: Record<GrowthGroupMeetingStatus, string> = {
+  SCHEDULED: "Agendado",
+  HELD: "Realizado",
+  CANCELED: "Cancelado",
+  UNKNOWN: "—",
+};
+
+export function meetingStatusVariant(status: GrowthGroupMeetingStatus): "success" | "muted" | "warning" | "outline" {
+  return status === "HELD" ? "success" : status === "CANCELED" ? "muted" : status === "SCHEDULED" ? "warning" : "outline";
+}
 
 export const STATUS_LABEL: Record<EclesiasticalStatus, string> = {
   VISITOR: "Visitante",
