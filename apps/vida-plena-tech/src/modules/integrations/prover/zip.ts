@@ -11,6 +11,10 @@ import type {
   ProverGcMeeting,
   ProverGcMeetingAttendance,
   ProverGcMeetingVisit,
+  ProverEvent,
+  ProverEventSession,
+  ProverEventRegistration,
+  ProverEventAttendance,
 } from "./types";
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -142,4 +146,30 @@ export function loadProverGcMeetingVisitors(filePath: string): { visitors: Prove
 export function loadProverGcMeetingVisits(filePath: string): { visits: ProverGcMeetingVisit[] } {
   const { records } = loadEntry<ProverGcMeetingVisit>(filePath, "grupos_encontros_visitas.json");
   return { visits: records };
+}
+
+// ── Eventos (Fase 5A) ──────────────────────────────────────────────────────
+export function loadProverEvents(filePath: string): { sourceFileHash: string; events: ProverEvent[] } {
+  const { sourceFileHash, records } = loadEntry<ProverEvent>(filePath, "evento_eventos.json");
+  return { sourceFileHash, events: records };
+}
+export function loadProverEventSessions(filePath: string): { sessions: ProverEventSession[] } {
+  const { records } = loadEntry<ProverEventSession>(filePath, "evento_encontros_eventos.json");
+  return { sessions: records };
+}
+export function loadProverEventRegistrations(filePath: string): { registrations: ProverEventRegistration[] } {
+  const { records } = loadEntry<ProverEventRegistration>(filePath, "evento_inscritos_eventos.json");
+  return { registrations: records };
+}
+export function loadProverEventAttendances(filePath: string): { attendances: ProverEventAttendance[] } {
+  const { records } = loadEntry<ProverEventAttendance>(filePath, "evento_presenca_eventos.json");
+  return { attendances: records };
+}
+/** Conta linhas de um arquivo auxiliar (documentação; retorna 0 se ausente). */
+export function countProverEntry(filePath: string, entryName: string): number {
+  try {
+    return loadEntry<unknown>(filePath, entryName).records.length;
+  } catch {
+    return 0;
+  }
 }

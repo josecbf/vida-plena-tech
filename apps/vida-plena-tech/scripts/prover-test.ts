@@ -35,6 +35,8 @@ import { planResolutions, applyResolutions } from "../src/modules/integrations/p
 import { runGcMeetingsDryRun } from "../src/modules/integrations/prover/gc-meetings-dry-run";
 import { runGcMeetingsApply } from "../src/modules/integrations/prover/gc-meetings-apply";
 import { runGcAttendanceApply } from "../src/modules/integrations/prover/gc-attendance-apply";
+import { runEventsDryRun } from "../src/modules/integrations/prover/events-dry-run";
+import type { ProverEvent, ProverEventSession, ProverEventRegistration, ProverEventAttendance } from "../src/modules/integrations/prover/types";
 import type { ProverGcMeeting, ProverGcMeetingAttendance } from "../src/modules/integrations/prover/types";
 import { readFileSync as readFileSyncCD } from "node:fs";
 import type { ProverGcParticipant, ProverGcVisitor } from "../src/modules/integrations/prover/types";
@@ -1094,6 +1096,91 @@ await (async () => {
     check("CR10. nenhuma escrita (user/role estáveis)", (await prisma.user.count()) === userBefore && (await prisma.roleAssignment.count()) === roleBefore && report.batchId === batch.id);
   } catch (e) {
     console.log(`  ⚠ CR. (skip) DB indisponível: ${e instanceof Error ? e.message : e}`);
+  } finally {
+    await prisma.$disconnect();
+  }
+})();
+
+// ── DRY-RUN de EVENTOS (Fase 5A) ──────────────────────────────────────────
+await (async () => {
+  const prisma = new PrismaClient();
+  try {
+    const slug = "events-test";
+    let t = await prisma.tenant.findUnique({ where: { slug } });
+    if (!t) t = await prisma.tenant.create({ data: { slug, name: "Events Test" } });
+    const tid = t.id;
+    await prisma.importBatchItem.deleteMany({ where: { tenantId: tid } });
+    await prisma.importBatch.deleteMany({ where: { tenantId: tid } });
+    await prisma.externalMapping.deleteMany({ where: { tenantId: tid } });
+    await prisma.person.deleteMany({ where: { tenantId: tid } });
+
+    const mkP = async (uuid: string) => {
+      const p = await prisma.person.create({ data: { tenantId: tid, fullName: uuid, status: "VISITOR" } });
+      await prisma.externalMapping.create({ data: { tenantId: tid, system: "PROVER", externalType: "person", externalId: uuid, internalType: "Person", internalId: p.id } });
+      return p;
+    };
+    await mkP("uuid-reg"); await mkP("uuid-att");
+
+    const events: ProverEvent[] = [
+      { uuid: "E1", tipo: "RETIRO", tema: "Retiro 2023", dataInicio: "2023-01-01" }, // válido
+      { uuid: "E2", tema: null, dataInicio: null }, // sem título e sem data
+    ];
+    const sessions: ProverEventSession[] = [
+      { uuidEvento: "E1", idEncontro: "s1", tema: "Dia 1", dataInicio: "2023-01-01 08:00:00" }, // pai OK
+      { uuidEvento: "NONE", idEncontro: "s2", tema: "orfã" }, // sem pai
+    ];
+    const registrations: ProverEventRegistration[] = [
+      { uuidEvento: "E1", uuidPessoa: "uuid-reg", dataInscricao: "2022-12-01", valorTotal: "100", lote: "L1", formaPagamento: "DINHEIRO" }, // resolvida + pagamento
+      { uuidEvento: "E1", uuidPessoa: "uuid-UNKNOWN" }, // pessoa não resolvida
+      { uuidEvento: "E1", uuidPessoa: "uuid-reg" }, // duplicada
+    ];
+    const attendances: ProverEventAttendance[] = [
+      { id: "a1", idEncontro: "s1", uuidPessoa: "uuid-att", presenca: "1" }, // sem inscrição (uuid-att não inscrito)
+      { id: "a2", idEncontro: "s1", uuidPessoa: "uuid-reg", presenca: "1" }, // com inscrição
+      { id: "a3", idEncontro: "sX", uuidPessoa: "uuid-att", presenca: "1" }, // sessão não resolvida
+      { id: "a4", idEncontro: "s1", uuidPessoa: "uuid-UNKNOWN", presenca: "1" }, // pessoa não resolvida
+      { id: "a5", idEncontro: "s1", uuidPessoa: "uuid-reg", presenca: "0" }, // duplicada (s1+uuid-reg) + ausente
+    ];
+
+    const before = {
+      event: await prisma.event.count({ where: { tenantId: tid } }),
+      reg: await prisma.eventRegistration.count({ where: { tenantId: tid } }),
+      person: await prisma.person.count({ where: { tenantId: tid } }),
+      user: await prisma.user.count(), role: await prisma.roleAssignment.count(),
+      statuses: Object.fromEntries((await prisma.person.findMany({ where: { tenantId: tid }, select: { id: true, status: true } })).map((p) => [p.id, p.status])),
+    };
+
+    const { report: r } = await runEventsDryRun(prisma, { tenantId: tid, fileName: "test", events, sessions, registrations, attendances });
+
+    const after = {
+      event: await prisma.event.count({ where: { tenantId: tid } }),
+      reg: await prisma.eventRegistration.count({ where: { tenantId: tid } }),
+      person: await prisma.person.count({ where: { tenantId: tid } }),
+      user: await prisma.user.count(), role: await prisma.roleAssignment.count(),
+      statuses: Object.fromEntries((await prisma.person.findMany({ where: { tenantId: tid }, select: { id: true, status: true } })).map((p) => [p.id, p.status])),
+    };
+
+    check("EV1. evento válido (sem warning título/data)", r.totalEvents === 2 && r.wouldCreate >= 1);
+    check("EV2. evento sem título", r.eventsWithoutTitle === 1);
+    check("EV3. evento com status desconhecido (export sem status)", r.eventsStatusUnknown === 2);
+    check("EV4. sessão com evento pai resolvido", r.totalSessions === 2 && r.sessionsWithoutParent === 1);
+    check("EV5. sessão sem evento pai", r.sessionsWithoutParent === 1);
+    check("EV6. inscrição com pessoa resolvida", r.registrationsPersonResolved === 2);
+    check("EV7. inscrição sem pessoa", r.registrationsPersonNotFound === 1);
+    check("EV8. inscrição duplicada", r.registrationDuplicates === 1);
+    check("EV9. presença com pessoa resolvida", r.attendancesPersonResolved === 4);
+    check("EV10. presença sem pessoa", r.attendancesPersonNotFound === 1);
+    check("EV11. presença sem inscrição correspondente", r.attendancesWithoutRegistration === 1);
+    check("EV12. presença duplicada", r.attendanceDuplicates === 1);
+    check("EV13. cancelado/inativo N/A (export sem status)", r.eventsCanceledOrInactive === 0 && r.registrationsInCanceledEvent === 0);
+    check("EV14. pagamento/lote detectado mas ignorado", r.paymentFieldsDetected === 1);
+    check("EV15. dry-run NÃO cria Event real", after.event === before.event && after.event === 0);
+    check("EV16. dry-run NÃO cria EventRegistration real", after.reg === before.reg && after.reg === 0);
+    check("EV17. dry-run NÃO altera Person", after.person === before.person && JSON.stringify(after.statuses) === JSON.stringify(before.statuses));
+    check("EV18. dry-run NÃO cria User/RoleAssignment", after.user === before.user && after.role === before.role);
+    check("EVx. ImportBatchItem por categoria (event/session/registration/attendance)", (await prisma.importBatchItem.count({ where: { tenantId: tid, batchId: r.batchId, externalType: "event" } })) === 2 && (await prisma.importBatchItem.count({ where: { tenantId: tid, batchId: r.batchId, externalType: "event_attendance" } })) === 5);
+  } catch (e) {
+    console.log(`  ⚠ EV. (skip) DB indisponível: ${e instanceof Error ? e.message : e}`);
   } finally {
     await prisma.$disconnect();
   }

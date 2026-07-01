@@ -134,6 +134,62 @@ export interface ProverGcMeetingAttendance {
 /** `grupos_encontros_visitas.json` — VAZIO neste export; forma não confirmada. */
 export type ProverGcMeetingVisit = Record<string, unknown>;
 
+// ── Eventos (Fase 5A) — nomes reais do export ──────────────────────────────
+/** `evento_eventos.json` — evento pai (key = uuid). NÃO há campo de status. */
+export interface ProverEvent {
+  uuid: string;
+  tipo?: string | null;
+  tema?: string | null;
+  responsavel?: string | null;
+  dataInicio?: string | null;
+  dataFim?: string | null;
+  enderecoCidade?: string | null;
+  enderecoEstado?: string | null;
+  local?: string | null;
+}
+
+/** `evento_encontros_eventos.json` — sessão (key = idEncontro; pai = uuidEvento). */
+export interface ProverEventSession {
+  uuidEvento: string;
+  tema?: string | null;
+  idEncontro: string;
+  uuidResponsavel?: string | null;
+  materia?: string | null;
+  dataInicio?: string | null;
+  dataFim?: string | null;
+}
+
+/** `evento_inscritos_eventos.json` — inscrição (nível EVENTO; pessoa = uuidPessoa). */
+export interface ProverEventRegistration {
+  uuidEvento: string;
+  tema?: string | null;
+  uuidPessoa: string;
+  dataInscricao?: string | null;
+  // campos de pagamento/lote — DOCUMENTAR e IGNORAR nesta fase
+  lote?: string | null;
+  valorLote?: string | null;
+  valorDesconto?: string | null;
+  valorTotal?: string | null;
+  formaPagamento?: string | null;
+  regraPagamento?: string | null;
+  regraPessoa?: string | null;
+  idResumo?: string | null;
+}
+
+/** `evento_presenca_eventos.json` — presença (sessão = idEncontro; inscrição = idEventoInscricao). */
+export interface ProverEventAttendance {
+  id: string;
+  idEncontro: string;
+  idEncontroReposicao?: string | null;
+  uuidPessoa: string;
+  presenca?: string | null;
+  saida?: string | null;
+  observacao?: string | null;
+  idEventoInscricao?: string | null;
+  dataCheckIn?: string | null;
+  dataCheckOut?: string | null;
+}
+
 export interface ProverExportManifest {
   exportedAt: string;
   counts: { people: number };

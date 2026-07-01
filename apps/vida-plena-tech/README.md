@@ -439,6 +439,32 @@ obrigatório, `--limit` suportado. Auditoria `import_attendance_create`. **Nunca
 membership/Person/status/encontro, nem cria User/Role. Campos aditivos `source`/`sourceMark`
 (migration aditiva; `status AttendanceStatus` reaproveitado).
 
+### Eventos — dry-run (Fase 5A)
+
+```bash
+pnpm prover:events:dry-run --file ./data/export_prover_2026-06-27.zip
+```
+
+Lê e entende os 4 arquivos de evento **sem escrever nada real** (só `ImportBatch`/`ImportBatchItem`
++ relatório em `tmp/`). Modelo do Prover:
+
+| Arquivo | Papel | Chave / relação |
+|---|---|---|
+| `evento_eventos.json` | **Evento pai** | `uuid` (sem campo de status) |
+| `evento_encontros_eventos.json` | **Sessão** | `idEncontro`, pai = `uuidEvento` |
+| `evento_inscritos_eventos.json` | **Inscrição** (nível evento) | `uuidEvento`+`uuidPessoa`, + campos de **pagamento/lote** |
+| `evento_presenca_eventos.json` | **Presença** (nível sessão) | `idEncontro` + `uuidPessoa` + `idEventoInscricao`, `presenca` "1"/"0" |
+
+Resolve pessoa por `ExternalMapping(person)`; propõe as chaves externas `event`/`event_session`/
+`event_registration`/`event_attendance` (não cria mapping real). Detecta: `EVENT_WITHOUT_TITLE/DATE`,
+`EVENT_STATUS_UNKNOWN`, `SESSION_WITHOUT_PARENT_EVENT`, `PERSON_MAPPING_NOT_FOUND`,
+`REGISTRATION_EVENT_NOT_FOUND`, `REGISTRATION_DUPLICATE`, `ATTENDANCE_SESSION_NOT_FOUND`,
+`ATTENDANCE_WITHOUT_REGISTRATION`, `ATTENDANCE_DUPLICATE`, `PAYMENT_FIELDS_IGNORED`. **Pagamento/lote/
+financeiro** (campos das inscrições + `evento_regras_*`/`evento_resumos_eventos.json`) são **apenas
+documentados e ignorados**. **Não** cria `Event`/`EventRegistration`/presença, **não** altera
+`Person`/`User`/`Role`. Relatórios (fora do git): `events-dry-run-summary.json`,
+`events-dry-run-conflicts.csv`.
+
 ### Testes das funções puras + DB
 
 ```bash
