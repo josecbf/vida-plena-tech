@@ -38,6 +38,7 @@ import { runGcAttendanceApply } from "../src/modules/integrations/prover/gc-atte
 import { runEventsDryRun } from "../src/modules/integrations/prover/events-dry-run";
 import { runEventsApply } from "../src/modules/integrations/prover/events-apply";
 import { runEventRegistrationsApply } from "../src/modules/integrations/prover/event-registrations-apply";
+import { runEventAttendanceApply, classifyRegistrationCount } from "../src/modules/integrations/prover/event-attendance-apply";
 import type { ProverEvent, ProverEventSession, ProverEventRegistration, ProverEventAttendance } from "../src/modules/integrations/prover/types";
 import type { ProverGcMeeting, ProverGcMeetingAttendance } from "../src/modules/integrations/prover/types";
 import { readFileSync as readFileSyncCD } from "node:fs";
@@ -1103,6 +1104,114 @@ await (async () => {
   }
 })();
 
+// ── APPLY de PRESENÇAS de evento (Fase 5B.3) ──────────────────────────────
+await (async () => {
+  const prisma = new PrismaClient();
+  try {
+    const slug = "eventatt-test";
+    let t = await prisma.tenant.findUnique({ where: { slug } });
+    if (!t) t = await prisma.tenant.create({ data: { slug, name: "Event Att Test" } });
+    const tid = t.id;
+    await prisma.auditLog.deleteMany({ where: { tenantId: tid } });
+    await prisma.importBatchItem.deleteMany({ where: { tenantId: tid } });
+    await prisma.importBatch.deleteMany({ where: { tenantId: tid } });
+    await prisma.externalMapping.deleteMany({ where: { tenantId: tid } });
+    await prisma.eventAttendance.deleteMany({ where: { tenantId: tid } });
+    await prisma.eventRegistration.deleteMany({ where: { tenantId: tid } });
+    await prisma.eventSession.deleteMany({ where: { tenantId: tid } });
+    await prisma.event.deleteMany({ where: { tenantId: tid } });
+    await prisma.person.deleteMany({ where: { tenantId: tid } });
+
+    // pure helper (EAT7)
+    check("EAT7. classifyRegistrationCount (0/1/2)", classifyRegistrationCount(0) === "NOT_FOUND" && classifyRegistrationCount(1) === "OK" && classifyRegistrationCount(2) === "AMBIGUOUS");
+
+    const ev = await prisma.event.create({ data: { tenantId: tid, title: "Evento", startsAt: new Date("2023-01-01"), status: "FINISHED" } });
+    await prisma.externalMapping.create({ data: { tenantId: tid, system: "PROVER", externalType: "event", externalId: "uuid-EV", internalType: "Event", internalId: ev.id } });
+    const sess = await prisma.eventSession.create({ data: { tenantId: tid, eventId: ev.id, title: "Sessão", startsAt: new Date("2023-01-01T08:00:00Z") } });
+    await prisma.externalMapping.create({ data: { tenantId: tid, system: "PROVER", externalType: "event_session", externalId: "s1", internalType: "EventSession", internalId: sess.id } });
+
+    const mkP = async (uuid: string) => {
+      const p = await prisma.person.create({ data: { tenantId: tid, fullName: uuid, status: "VISITOR" } });
+      await prisma.externalMapping.create({ data: { tenantId: tid, system: "PROVER", externalType: "person", externalId: uuid, internalType: "Person", internalId: p.id } });
+      return p;
+    };
+    const mkReg = (personId: string) => prisma.eventRegistration.create({ data: { tenantId: tid, eventId: ev.id, personId, status: "CONFIRMED", source: "PROVER" } });
+    const pP = await mkP("uuid-P"); const pAbs = await mkP("uuid-Abs"); const pNull = await mkP("uuid-Null");
+    const pD = await mkP("uuid-D"); const pQ = await mkP("uuid-Q"); const pNoReg = await mkP("uuid-NoReg");
+    for (const px of [pP, pAbs, pNull, pD, pQ]) await mkReg(px.id); // pNoReg SEM inscrição
+
+    const attendances: ProverEventAttendance[] = [
+      { id: "p1", idEncontro: "s1", uuidPessoa: "uuid-P", presenca: "1", dataCheckIn: "2023-01-01 08:05:00", aproveitamento: "95" }, // PRESENT
+      { id: "p2", idEncontro: "s1", uuidPessoa: "uuid-Abs", presenca: "0" }, // ABSENT
+      { id: "p3", idEncontro: "s1", uuidPessoa: "uuid-Null", presenca: null }, // UNKNOWN
+      { id: "p4", idEncontro: "sX", uuidPessoa: "uuid-P", presenca: "1" }, // sessão não resolvida
+      { id: "p5", idEncontro: "s1", uuidPessoa: "uuid-UNKNOWN", presenca: "1" }, // pessoa não resolvida
+      { id: "p6", idEncontro: "s1", uuidPessoa: "uuid-NoReg", presenca: "1" }, // sem inscrição
+      { id: "p7", idEncontro: "s1", uuidPessoa: "uuid-D", presenca: "1" }, // dup simples
+      { id: "p8", idEncontro: "s1", uuidPessoa: "uuid-D", presenca: "1" }, // dup simples (idêntica)
+      { id: "p9", idEncontro: "s1", uuidPessoa: "uuid-Q", presenca: "1" }, // dup conflitante
+      { id: "p10", idEncontro: "s1", uuidPessoa: "uuid-Q", presenca: "0" }, // dup conflitante (divergente)
+    ];
+
+    const before = {
+      att: await prisma.eventAttendance.count({ where: { tenantId: tid } }),
+      event: await prisma.event.count({ where: { tenantId: tid } }),
+      session: await prisma.eventSession.count({ where: { tenantId: tid } }),
+      reg: await prisma.eventRegistration.count({ where: { tenantId: tid } }),
+      person: await prisma.person.count({ where: { tenantId: tid } }),
+      member: await prisma.person.count({ where: { tenantId: tid, status: "MEMBER" } }),
+      user: await prisma.user.count(), role: await prisma.roleAssignment.count(),
+      statuses: Object.fromEntries((await prisma.person.findMany({ where: { tenantId: tid }, select: { id: true, status: true } })).map((p) => [p.id, p.status])),
+    };
+
+    const r = await runEventAttendanceApply(prisma, { tenantId: tid, fileName: "test", attendances });
+
+    const att = (personId: string) => prisma.eventAttendance.findFirst({ where: { tenantId: tid, personId } });
+    const aP = await att(pP.id); const aAbs = await att(pAbs.id); const aNull = await att(pNull.id);
+    const regP = await prisma.eventRegistration.findFirst({ where: { tenantId: tid, eventId: ev.id, personId: pP.id } });
+    const mapP = await prisma.externalMapping.findFirst({ where: { tenantId: tid, externalType: "event_attendance", externalId: "s1:uuid-P" } });
+
+    check("EAT1. cria presença PRESENT", aP?.status === "PRESENT" && aP?.eventSessionId === sess.id && r.present >= 1);
+    check("EAT2. cria presença ABSENT", aAbs?.status === "ABSENT");
+    check("EAT3. presenca null → UNKNOWN (criada)", aNull?.status === "UNKNOWN" && r.unknown >= 1);
+    check("EAT4. resolve EventSession por mapping", r.sessionResolved >= 1 && aP?.eventSessionId === sess.id);
+    check("EAT5. resolve Person por mapping", r.personResolved >= 1 && aP?.personId === pP.id);
+    check("EAT6. resolve EventRegistration por event+pessoa", aP?.eventRegistrationId === regP?.id && r.registrationResolved === 4);
+    check("EAT8. pula sessão não resolvida", r.sessionNotFound === 1);
+    check("EAT9. pula pessoa não resolvida", r.personNotFound === 1);
+    check("EATx. pula inscrição não encontrada (não cria presença solta)", r.registrationNotFound === 1 && (await att(pNoReg.id)) === null);
+    check("EAT10. duplicidade simples não duplica", r.duplicateSimple === 1 && (await prisma.eventAttendance.count({ where: { tenantId: tid, personId: pD.id } })) === 1);
+    check("EAT11. duplicidade conflitante vira SKIP", r.duplicateConflict === 2 && (await prisma.eventAttendance.count({ where: { tenantId: tid, personId: pQ.id } })) === 0);
+    check("EAT12. cria ExternalMapping(event_attendance)", mapP?.internalId === aP?.id);
+
+    const after = {
+      att: await prisma.eventAttendance.count({ where: { tenantId: tid } }),
+      event: await prisma.event.count({ where: { tenantId: tid } }),
+      session: await prisma.eventSession.count({ where: { tenantId: tid } }),
+      reg: await prisma.eventRegistration.count({ where: { tenantId: tid } }),
+      person: await prisma.person.count({ where: { tenantId: tid } }),
+      member: await prisma.person.count({ where: { tenantId: tid, status: "MEMBER" } }),
+      user: await prisma.user.count(), role: await prisma.roleAssignment.count(),
+      statuses: Object.fromEntries((await prisma.person.findMany({ where: { tenantId: tid }, select: { id: true, status: true } })).map((p) => [p.id, p.status])),
+    };
+    check("EAT14. NÃO altera Event", after.event === before.event);
+    check("EAT15. NÃO altera EventSession", after.session === before.session);
+    check("EAT16. NÃO altera EventRegistration", after.reg === before.reg);
+    check("EAT17. NÃO altera Person/status", after.person === before.person && JSON.stringify(after.statuses) === JSON.stringify(before.statuses));
+    check("EAT18. NÃO cria User", after.user === before.user);
+    check("EAT19. NÃO cria RoleAssignment", after.role === before.role);
+
+    // EAT13: idempotência
+    const r2 = await runEventAttendanceApply(prisma, { tenantId: tid, fileName: "test", attendances });
+    const fin = { att: await prisma.eventAttendance.count({ where: { tenantId: tid } }), map: await prisma.externalMapping.count({ where: { tenantId: tid, externalType: "event_attendance" } }) };
+    check("EAT13. apply 2x não duplica", r2.created === 0 && fin.att === after.att && fin.map === r.created);
+  } catch (e) {
+    console.log(`  ⚠ EAT. (skip) DB indisponível: ${e instanceof Error ? e.message : e}`);
+  } finally {
+    await prisma.$disconnect();
+  }
+})();
+
 // ── APPLY de INSCRIÇÕES de evento (Fase 5B.2) ─────────────────────────────
 await (async () => {
   const prisma = new PrismaClient();
@@ -1916,6 +2025,12 @@ try {
   check("C10. event-registrations:apply SEM --confirm falha (exit 2)", res.status === 2, `exit=${res.status}`);
 } catch {
   console.log("  ⚠ C10. (skip) não foi possível spawnar o CLI");
+}
+try {
+  const res = spawnSync("pnpm", ["prover:event-attendance:apply", "--file", "./data/sample/x.zip"], { encoding: "utf8", timeout: 60000 });
+  check("C11. event-attendance:apply SEM --confirm falha (exit 2)", res.status === 2, `exit=${res.status}`);
+} catch {
+  console.log("  ⚠ C11. (skip) não foi possível spawnar o CLI");
 }
 
 console.log(`\nResultado: ${passed} passou, ${failed} falhou.\n`);

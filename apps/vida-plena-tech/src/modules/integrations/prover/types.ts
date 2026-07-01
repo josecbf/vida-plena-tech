@@ -184,6 +184,7 @@ export interface ProverEventAttendance {
   uuidPessoa: string;
   presenca?: string | null;
   saida?: string | null;
+  aproveitamento?: string | null;
   observacao?: string | null;
   idEventoInscricao?: string | null;
   dataCheckIn?: string | null;

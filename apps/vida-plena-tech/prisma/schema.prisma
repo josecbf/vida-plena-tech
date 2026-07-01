@@ -374,6 +374,7 @@ model Person {
   membership      TenantMembership?
   attendances     GrowthGroupAttendance[]
   eventRegs       EventRegistration[]
+  eventAttendances EventAttendance[]
   leadershipMemberships LeadershipUnitMember[]
 
   // Vínculos familiares (dois lados da relação)
@@ -763,6 +764,7 @@ model Event {
   campus        Campus?             @relation(fields: [campusId], references: [id])
   registrations EventRegistration[]
   sessions      EventSession[]
+  attendances   EventAttendance[]
 
   @@index([tenantId])
 }
@@ -785,7 +787,8 @@ model EventSession {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  event Event @relation(fields: [eventId], references: [id])
+  event       Event             @relation(fields: [eventId], references: [id])
+  attendances EventAttendance[]
 
   @@index([tenantId])
   @@index([eventId])
@@ -807,11 +810,58 @@ model EventRegistration {
   sourcePaymentJson  Json?     // lote/valores/formaPagamento — PRESERVADO, sem lógica financeira
   metaJson           Json?     // idResumo, regras etc.
 
-  event  Event  @relation(fields: [eventId], references: [id])
-  person Person @relation(fields: [personId], references: [id])
+  event       Event             @relation(fields: [eventId], references: [id])
+  person      Person            @relation(fields: [personId], references: [id])
+  attendances EventAttendance[]
 
   @@unique([eventId, personId])
   @@index([tenantId])
+  @@index([personId])
+}
+
+/// Presença em sessão de evento (Prover: evento_presenca_eventos). Aditivo.
+enum EventAttendanceStatus {
+  PRESENT
+  ABSENT
+  UNKNOWN
+}
+
+enum EventAttendanceSource {
+  PROVER
+  MANUAL
+}
+
+model EventAttendance {
+  id       String @id @default(cuid())
+  tenantId String
+
+  eventId             String
+  eventSessionId      String?
+  eventRegistrationId String?
+  personId            String?
+
+  status EventAttendanceStatus
+  source EventAttendanceSource @default(PROVER)
+
+  checkedInAt  DateTime?
+  checkedOutAt DateTime?
+  score        Float?
+
+  sourceMark String? // marca crua do Prover ("1"/"0")
+  metaJson   Json? // presenceId, idEventoInscricao, idEncontroReposicao…
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  event             Event              @relation(fields: [eventId], references: [id])
+  eventSession      EventSession?      @relation(fields: [eventSessionId], references: [id])
+  eventRegistration EventRegistration? @relation(fields: [eventRegistrationId], references: [id])
+  person            Person?            @relation(fields: [personId], references: [id])
+
+  @@index([tenantId])
+  @@index([eventId])
+  @@index([eventSessionId])
+  @@index([eventRegistrationId])
   @@index([personId])
 }
 

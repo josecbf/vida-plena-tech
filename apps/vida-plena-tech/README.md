@@ -501,6 +501,24 @@ resolvidos → `SKIP`. `--confirm APPLY` obrigatório, `--limit` suportado. Audi
 `import_event_registration_create/update`. **Nunca** cria presença/`EventAttendance`, altera
 `Event`/`Person`/status, nem cria User/Role.
 
+#### Apply de presenças de evento (Fase 5B.3)
+
+```bash
+pnpm prover:event-attendance:apply --file ./data/export_prover_2026-06-27.zip --limit 500 --confirm APPLY
+pnpm prover:event-attendance:apply --file ./data/export_prover_2026-06-27.zip --confirm APPLY   # FULL (só com autorização)
+```
+
+Cria `EventAttendance` (novo modelo aditivo) de `evento_presenca_eventos.json`. Resolve sessão
+(`ExternalMapping event_session`), pessoa (`ExternalMapping person`) e inscrição (`EventRegistration`
+por `eventId+personId`, ≤1 pelo `@@unique`). `presenca` "1"→`PRESENT`, "0"→`ABSENT`, `null`→`UNKNOWN`.
+`checkedInAt/checkedOutAt` das datas, `score` do `aproveitamento`, `sourceMark`/`metaJson` preservados.
+Idempotente via `ExternalMapping event_attendance` (chave `idEncontro:uuidPessoa` — 1 presença por
+sessão/pessoa; 2× → 0 duplicados). **Inscrição não encontrada → `SKIP`** `EVENT_REGISTRATION_NOT_FOUND`
+(não cria presença solta). Duplicidade idêntica consolida; **conflitante** (`presenca` divergente) →
+`SKIP` `EVENT_ATTENDANCE_DUPLICATE_CONFLICT`. Sessão/pessoa não resolvidas → `SKIP`. `--confirm APPLY`
+obrigatório, `--limit` suportado. Auditoria `import_event_attendance_create`. **Nunca** altera
+`Event`/`EventSession`/`EventRegistration`/`Person`/status, nem cria User/Role/financeiro.
+
 ### Testes das funções puras + DB
 
 ```bash
