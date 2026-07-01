@@ -482,6 +482,25 @@ duplicados). Evento sem título/data → `SKIP`. `--confirm APPLY` obrigatório,
 Auditoria `import_event_create/update`, `import_event_session_create/update`. **Nunca** cria
 `EventRegistration`/presença, altera `Person`/status, nem cria User/Role.
 
+#### Apply de inscrições de evento (Fase 5B.2)
+
+```bash
+pnpm prover:event-registrations:apply --file ./data/export_prover_2026-06-27.zip --limit 500 --confirm APPLY
+pnpm prover:event-registrations:apply --file ./data/export_prover_2026-06-27.zip --confirm APPLY   # FULL (só com autorização)
+```
+
+Cria `EventRegistration` de `evento_inscritos_eventos.json`, resolvendo evento (`ExternalMapping
+event`) e pessoa (`ExternalMapping person`). Chave externa `event_registration` =
+`uuidEvento:uuidPessoa`; idempotente também pelo `@@unique(eventId, personId)` (2× → 0 duplicados).
+**Pagamento/lote** (`lote`, `valores`, `formaPagamento`, `regras`) são **preservados** em
+`sourcePaymentJson` como metadata — **sem** qualquer lógica financeira (nada de cobrança/boleto/pix/
+lançamento), warning `PAYMENT_FIELDS_PRESERVED_AS_METADATA`. Duplicidade idêntica consolida (1 só);
+**conflitante** (`dataInscricao` divergente na mesma pessoa/evento) → `SKIP`
+`EVENT_REGISTRATION_DUPLICATE_CONFLICT` (não cria nenhuma, exige decisão humana). Evento/pessoa não
+resolvidos → `SKIP`. `--confirm APPLY` obrigatório, `--limit` suportado. Auditoria
+`import_event_registration_create/update`. **Nunca** cria presença/`EventAttendance`, altera
+`Event`/`Person`/status, nem cria User/Role.
+
 ### Testes das funções puras + DB
 
 ```bash

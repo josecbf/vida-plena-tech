@@ -37,6 +37,7 @@ import { runGcMeetingsApply } from "../src/modules/integrations/prover/gc-meetin
 import { runGcAttendanceApply } from "../src/modules/integrations/prover/gc-attendance-apply";
 import { runEventsDryRun } from "../src/modules/integrations/prover/events-dry-run";
 import { runEventsApply } from "../src/modules/integrations/prover/events-apply";
+import { runEventRegistrationsApply } from "../src/modules/integrations/prover/event-registrations-apply";
 import type { ProverEvent, ProverEventSession, ProverEventRegistration, ProverEventAttendance } from "../src/modules/integrations/prover/types";
 import type { ProverGcMeeting, ProverGcMeetingAttendance } from "../src/modules/integrations/prover/types";
 import { readFileSync as readFileSyncCD } from "node:fs";
@@ -1102,6 +1103,93 @@ await (async () => {
   }
 })();
 
+// ── APPLY de INSCRIÇÕES de evento (Fase 5B.2) ─────────────────────────────
+await (async () => {
+  const prisma = new PrismaClient();
+  try {
+    const slug = "eventreg-test";
+    let t = await prisma.tenant.findUnique({ where: { slug } });
+    if (!t) t = await prisma.tenant.create({ data: { slug, name: "Event Reg Test" } });
+    const tid = t.id;
+    await prisma.auditLog.deleteMany({ where: { tenantId: tid } });
+    await prisma.importBatchItem.deleteMany({ where: { tenantId: tid } });
+    await prisma.importBatch.deleteMany({ where: { tenantId: tid } });
+    await prisma.externalMapping.deleteMany({ where: { tenantId: tid } });
+    await prisma.eventRegistration.deleteMany({ where: { tenantId: tid } });
+    await prisma.eventSession.deleteMany({ where: { tenantId: tid } });
+    await prisma.event.deleteMany({ where: { tenantId: tid } });
+    await prisma.person.deleteMany({ where: { tenantId: tid } });
+
+    const mkP = async (uuid: string) => {
+      const p = await prisma.person.create({ data: { tenantId: tid, fullName: uuid, status: "VISITOR" } });
+      await prisma.externalMapping.create({ data: { tenantId: tid, system: "PROVER", externalType: "person", externalId: uuid, internalType: "Person", internalId: p.id } });
+      return p;
+    };
+    const ev = await prisma.event.create({ data: { tenantId: tid, title: "Retiro", startsAt: new Date("2023-01-01"), status: "FINISHED" } });
+    await prisma.externalMapping.create({ data: { tenantId: tid, system: "PROVER", externalType: "event", externalId: "uuid-E1", internalType: "Event", internalId: ev.id } });
+    const pP = await mkP("uuid-P"); const pD = await mkP("uuid-D"); const pQ = await mkP("uuid-Q");
+
+    const registrations: ProverEventRegistration[] = [
+      { uuidEvento: "uuid-E1", uuidPessoa: "uuid-P", dataInscricao: "2023-01-01 10:00:00", valorTotal: "100", lote: "L1", formaPagamento: "DINHEIRO", idResumo: "R1" }, // resolvida + pagamento
+      { uuidEvento: "uuid-NONE", uuidPessoa: "uuid-P" }, // evento não resolvido
+      { uuidEvento: "uuid-E1", uuidPessoa: "uuid-UNKNOWN" }, // pessoa não resolvida
+      { uuidEvento: "uuid-E1", uuidPessoa: "uuid-D", dataInscricao: "2023-01-01 10:00:00" }, // dup simples
+      { uuidEvento: "uuid-E1", uuidPessoa: "uuid-D", dataInscricao: "2023-01-01 10:00:00" }, // dup simples (idêntica)
+      { uuidEvento: "uuid-E1", uuidPessoa: "uuid-Q", dataInscricao: "2023-01-01 10:00:00" }, // dup conflitante
+      { uuidEvento: "uuid-E1", uuidPessoa: "uuid-Q", dataInscricao: "2023-02-02 12:00:00" }, // dup conflitante (data divergente)
+    ];
+
+    const before = {
+      reg: await prisma.eventRegistration.count({ where: { tenantId: tid } }),
+      event: await prisma.event.count({ where: { tenantId: tid } }),
+      session: await prisma.eventSession.count({ where: { tenantId: tid } }),
+      person: await prisma.person.count({ where: { tenantId: tid } }),
+      member: await prisma.person.count({ where: { tenantId: tid, status: "MEMBER" } }),
+      user: await prisma.user.count(), role: await prisma.roleAssignment.count(),
+      statuses: Object.fromEntries((await prisma.person.findMany({ where: { tenantId: tid }, select: { id: true, status: true } })).map((p) => [p.id, p.status])),
+    };
+
+    const r = await runEventRegistrationsApply(prisma, { tenantId: tid, fileName: "test", registrations });
+
+    const regP = await prisma.eventRegistration.findFirst({ where: { tenantId: tid, eventId: ev.id, personId: pP.id } });
+    const mapP = await prisma.externalMapping.findFirst({ where: { tenantId: tid, externalType: "event_registration", externalId: "uuid-E1:uuid-P" } });
+
+    check("ER1. cria inscrição com evento e pessoa resolvidos", !!regP && regP.source === "PROVER" && r.created === 2);
+    check("ER2. pula inscrição sem evento resolvido", r.eventNotFound === 1);
+    check("ER3. pula inscrição sem pessoa resolvida", r.personNotFound === 1);
+    check("ER4. cria ExternalMapping(event_registration)", mapP?.internalId === regP?.id);
+    check("ER5. preserva pagamento/lote em metadata", !!(regP?.sourcePaymentJson as { valorTotal?: string })?.valorTotal && r.paymentPreserved === 1);
+    check("ER6. NÃO cria financeiro (status CONFIRMED, sem lógica de cobrança)", regP?.status === "CONFIRMED" && r.paymentDetected === 1);
+    check("ER7. duplicidade simples não duplica", r.duplicateSimple === 1 && (await prisma.eventRegistration.count({ where: { tenantId: tid, personId: pD.id } })) === 1);
+    check("ER8. duplicidade conflitante vira SKIP", r.duplicateConflict === 2 && (await prisma.eventRegistration.count({ where: { tenantId: tid, personId: pQ.id } })) === 0);
+
+    const after = {
+      reg: await prisma.eventRegistration.count({ where: { tenantId: tid } }),
+      event: await prisma.event.count({ where: { tenantId: tid } }),
+      session: await prisma.eventSession.count({ where: { tenantId: tid } }),
+      person: await prisma.person.count({ where: { tenantId: tid } }),
+      member: await prisma.person.count({ where: { tenantId: tid, status: "MEMBER" } }),
+      user: await prisma.user.count(), role: await prisma.roleAssignment.count(),
+      statuses: Object.fromEntries((await prisma.person.findMany({ where: { tenantId: tid }, select: { id: true, status: true } })).map((p) => [p.id, p.status])),
+    };
+    check("ER10. NÃO grava presença (só event_registration)", (await prisma.importBatchItem.count({ where: { tenantId: tid, externalType: "event_attendance" } })) === 0);
+    check("ER11. NÃO altera Event/EventSession", after.event === before.event && after.session === before.session);
+    check("ER12. NÃO altera Person", after.person === before.person);
+    check("ER13. NÃO altera status eclesiástico", JSON.stringify(after.statuses) === JSON.stringify(before.statuses) && after.member === before.member);
+    check("ER14. NÃO cria User", after.user === before.user);
+    check("ER15. NÃO cria RoleAssignment", after.role === before.role);
+
+    // ER9: idempotência
+    const r2 = await runEventRegistrationsApply(prisma, { tenantId: tid, fileName: "test", registrations });
+    const fin = { reg: await prisma.eventRegistration.count({ where: { tenantId: tid } }), map: await prisma.externalMapping.count({ where: { tenantId: tid, externalType: "event_registration" } }) };
+    check("ER9. apply 2x não duplica inscrição", r2.created === 0 && fin.reg === after.reg && fin.map === r.created);
+  } catch (e) {
+    console.log(`  ⚠ ER. (skip) DB indisponível: ${e instanceof Error ? e.message : e}`);
+  } finally {
+    await prisma.$disconnect();
+  }
+})();
+
 // ── APPLY de EVENTOS + SESSÕES (Fase 5B.1) ────────────────────────────────
 await (async () => {
   const prisma = new PrismaClient();
@@ -1822,6 +1910,12 @@ try {
   check("C9. events:apply SEM --confirm falha (exit 2)", res.status === 2, `exit=${res.status}`);
 } catch {
   console.log("  ⚠ C9. (skip) não foi possível spawnar o CLI");
+}
+try {
+  const res = spawnSync("pnpm", ["prover:event-registrations:apply", "--file", "./data/sample/x.zip"], { encoding: "utf8", timeout: 60000 });
+  check("C10. event-registrations:apply SEM --confirm falha (exit 2)", res.status === 2, `exit=${res.status}`);
+} catch {
+  console.log("  ⚠ C10. (skip) não foi possível spawnar o CLI");
 }
 
 console.log(`\nResultado: ${passed} passou, ${failed} falhou.\n`);

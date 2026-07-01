@@ -801,6 +801,12 @@ model EventRegistration {
   createdAt DateTime           @default(now())
   cancelledAt DateTime?
 
+  // Fase 5B.2 — campos aditivos (importação de inscrições do Prover)
+  source             String?   // "PROVER"
+  sourceRegisteredAt DateTime? // dataInscricao
+  sourcePaymentJson  Json?     // lote/valores/formaPagamento — PRESERVADO, sem lógica financeira
+  metaJson           Json?     // idResumo, regras etc.
+
   event  Event  @relation(fields: [eventId], references: [id])
   person Person @relation(fields: [personId], references: [id])
 
