@@ -39,6 +39,8 @@ import { runEventsDryRun } from "../src/modules/integrations/prover/events-dry-r
 import { runEventsApply } from "../src/modules/integrations/prover/events-apply";
 import { runEventRegistrationsApply } from "../src/modules/integrations/prover/event-registrations-apply";
 import { runEventAttendanceApply, classifyRegistrationCount } from "../src/modules/integrations/prover/event-attendance-apply";
+import { runTeachingDryRun } from "../src/modules/integrations/prover/teaching-dry-run";
+import type { ProverTeaching, ProverTeachingModule, ProverTeachingLesson, ProverTeachingSession, ProverTeachingRegistration, ProverTeachingAttendance } from "../src/modules/integrations/prover/types";
 import type { ProverEvent, ProverEventSession, ProverEventRegistration, ProverEventAttendance } from "../src/modules/integrations/prover/types";
 import type { ProverGcMeeting, ProverGcMeetingAttendance } from "../src/modules/integrations/prover/types";
 import { readFileSync as readFileSyncCD } from "node:fs";
@@ -1372,6 +1374,96 @@ await (async () => {
     check("EA9. apply 2x não duplica EventSession", r2.sessionsCreated === 0 && fin.session === after.session && fin.mapS === 1);
   } catch (e) {
     console.log(`  ⚠ EA. (skip) DB indisponível: ${e instanceof Error ? e.message : e}`);
+  } finally {
+    await prisma.$disconnect();
+  }
+})();
+
+// ── DRY-RUN de ENSINO/TD (Fase 6A) ────────────────────────────────────────
+await (async () => {
+  const prisma = new PrismaClient();
+  try {
+    const slug = "teaching-test";
+    let t = await prisma.tenant.findUnique({ where: { slug } });
+    if (!t) t = await prisma.tenant.create({ data: { slug, name: "Teaching Test" } });
+    const tid = t.id;
+    await prisma.importBatchItem.deleteMany({ where: { tenantId: tid } });
+    await prisma.importBatch.deleteMany({ where: { tenantId: tid } });
+    await prisma.externalMapping.deleteMany({ where: { tenantId: tid } });
+    await prisma.person.deleteMany({ where: { tenantId: tid } });
+
+    const mkP = async (uuid: string) => {
+      const p = await prisma.person.create({ data: { tenantId: tid, fullName: uuid, status: "VISITOR" } });
+      await prisma.externalMapping.create({ data: { tenantId: tid, system: "PROVER", externalType: "person", externalId: uuid, internalType: "Person", internalId: p.id } });
+      return p;
+    };
+    await mkP("uuid-reg"); await mkP("uuid-dup"); await mkP("uuid-att");
+
+    const teachings: ProverTeaching[] = [
+      { uuid: "T1", tipo: "INTEGRAÇÃO", tema: "Curso Integração", dataInicio: "2024-01-01" }, // válido
+      { uuid: "T2", tema: null, dataInicio: "2024-02-01" }, // sem título
+    ];
+    const modules: ProverTeachingModule[] = [
+      { id: "m1", nome: "Módulo 1" }, // referenciado por encontro
+      { id: "m2", nome: "Módulo órfão" }, // NÃO referenciado
+    ];
+    const lessons: ProverTeachingLesson[] = [
+      { id: "a1", idModulo: "m1", nome: "Aula 1", ordem: "1" }, // módulo OK
+      { id: "a2", idModulo: "mX", nome: "Aula órfã" }, // módulo inexistente
+    ];
+    const sessions: ProverTeachingSession[] = [
+      { uuidEnsino: "T1", idEncontro: "e1", tema: "Enc 1", idModulo: "m1", idAula: "a1", dataInicio: "2024-01-01 20:00:00" }, // pai OK, refs m1
+      { uuidEnsino: "NONE", idEncontro: "e2", tema: "órfão" }, // sem ensino pai
+    ];
+    const registrations: ProverTeachingRegistration[] = [
+      { uuidEnsino: "T1", uuidPessoa: "uuid-reg", dataInscricao: "2023-12-01", status: "Cursando", nota: "8", lote: "L1", valorTotal: "0" }, // resolvida + completion + pagamento
+      { uuidEnsino: "T1", uuidPessoa: "uuid-UNKNOWN", status: "Cursando" }, // pessoa não resolvida
+      { uuidEnsino: "T1", uuidPessoa: "uuid-dup", status: "Cursando" }, // dup
+      { uuidEnsino: "T1", uuidPessoa: "uuid-dup", status: "Cursando" }, // dup (idêntica)
+    ];
+    const attendances: ProverTeachingAttendance[] = [
+      { id: "p1", idEncontro: "e1", uuidPessoa: "uuid-att", presenca: "1" }, // sem inscrição (uuid-att não inscrito)
+      { id: "p2", idEncontro: "e1", uuidPessoa: "uuid-reg", presenca: "1" }, // com inscrição
+      { id: "p3", idEncontro: "eX", uuidPessoa: "uuid-att", presenca: "1" }, // encontro não resolvido
+      { id: "p4", idEncontro: "e1", uuidPessoa: "uuid-UNKNOWN", presenca: "1" }, // pessoa não resolvida
+      { id: "p5", idEncontro: "e1", uuidPessoa: "uuid-reg", presenca: "0" }, // dup (e1+uuid-reg) + ausente
+    ];
+
+    const before = {
+      person: await prisma.person.count({ where: { tenantId: tid } }),
+      user: await prisma.user.count(), role: await prisma.roleAssignment.count(),
+      statuses: Object.fromEntries((await prisma.person.findMany({ where: { tenantId: tid }, select: { id: true, status: true } })).map((p) => [p.id, p.status])),
+    };
+
+    const { report: r } = await runTeachingDryRun(prisma, { tenantId: tid, fileName: "test", teachings, modules, lessons, sessions, registrations, attendances });
+
+    const after = {
+      person: await prisma.person.count({ where: { tenantId: tid } }),
+      user: await prisma.user.count(), role: await prisma.roleAssignment.count(),
+      statuses: Object.fromEntries((await prisma.person.findMany({ where: { tenantId: tid }, select: { id: true, status: true } })).map((p) => [p.id, p.status])),
+    };
+
+    check("TE1. ensino válido", r.totalTeachings === 2 && r.wouldCreate >= 1);
+    check("TE2. ensino sem título", r.teachingsWithoutTitle === 1);
+    check("TE3. módulo com ensino pai (via encontro)", r.totalModules === 2 && r.modulesWithoutParent === 1);
+    check("TE4. módulo sem ensino pai", r.modulesWithoutParent === 1);
+    check("TE5. aula com módulo", r.totalLessons === 2 && r.lessonsWithoutModule === 1);
+    check("TE6. aula sem módulo", r.lessonsWithoutModule === 1);
+    check("TE7. encontro com ensino pai", r.totalSessions === 2 && r.sessionsWithoutTeaching === 1);
+    check("TE8. encontro sem ensino pai", r.sessionsWithoutTeaching === 1);
+    check("TE9. inscrição com pessoa resolvida", r.registrationsPersonResolved === 3);
+    check("TE10. inscrição sem pessoa", r.registrationsPersonNotFound === 1);
+    check("TE11. inscrição duplicada", r.registrationDuplicates === 1);
+    check("TE12. presença com pessoa resolvida", r.attendancesPersonResolved === 4);
+    check("TE13. presença sem pessoa", r.attendancesPersonNotFound === 1);
+    check("TE14. presença sem inscrição correspondente", r.attendancesWithoutRegistration === 1);
+    check("TE15. presença duplicada", r.attendanceDuplicates === 1);
+    check("TE16. pagamento/lote detectado mas ignorado", r.paymentFieldsDetected === 1);
+    check("TE17. conclusão/aprovação detectada (status/nota)", r.completionFieldsDetected >= 1 && r.registrationStatuses["Cursando"] === 4);
+    check("TE18. dry-run grava itens por categoria (teaching/module/lesson/session/registration/attendance)", (await prisma.importBatchItem.count({ where: { tenantId: tid, batchId: r.batchId, externalType: "teaching" } })) === 2 && (await prisma.importBatchItem.count({ where: { tenantId: tid, batchId: r.batchId, externalType: "teaching_attendance" } })) === 5);
+    check("TE19. dry-run NÃO altera Person/User/RoleAssignment", after.person === before.person && JSON.stringify(after.statuses) === JSON.stringify(before.statuses) && after.user === before.user && after.role === before.role);
+  } catch (e) {
+    console.log(`  ⚠ TE. (skip) DB indisponível: ${e instanceof Error ? e.message : e}`);
   } finally {
     await prisma.$disconnect();
   }

@@ -191,6 +191,81 @@ export interface ProverEventAttendance {
   dataCheckOut?: string | null;
 }
 
+// ── Ensino / TD (Fase 6A) — nomes reais do export ──────────────────────────
+/** `ensino_ensinos.json` — curso pai (key = uuid). Sem campo de status. */
+export interface ProverTeaching {
+  uuid: string;
+  tipo?: string | null;
+  tema?: string | null;
+  responsavel?: string | null;
+  dataInicio?: string | null;
+  dataFim?: string | null;
+  local?: string | null;
+  enderecoCidade?: string | null;
+  enderecoEstado?: string | null;
+}
+
+/** `ensino_modulos.json` — módulo (key = id). NÃO referencia ensino diretamente. */
+export interface ProverTeachingModule {
+  id: string;
+  nome?: string | null;
+  descricao?: string | null;
+  media?: string | null;
+  presenca?: string | null;
+}
+
+/** `ensino_aulas.json` — aula (key = id; pai = idModulo). */
+export interface ProverTeachingLesson {
+  id: string;
+  idModulo: string;
+  nome?: string | null;
+  descricao?: string | null;
+  tempo?: string | null;
+  ordem?: string | null;
+}
+
+/** `ensino_encontros_ensinos.json` — sessão/aula REALIZADA (liga ensino+módulo+aula). */
+export interface ProverTeachingSession {
+  uuidEnsino: string;
+  tema?: string | null;
+  idEncontro: string;
+  uuidResponsavel?: string | null;
+  materia?: string | null;
+  dataInicio?: string | null;
+  dataFim?: string | null;
+  idAula?: string | null;
+  idModulo?: string | null;
+}
+
+/** `ensino_inscritos_ensinos.json` — inscrição (nível ENSINO). status + nota + pagamento. */
+export interface ProverTeachingRegistration {
+  uuidEnsino: string;
+  tema?: string | null;
+  uuidPessoa: string;
+  dataInscricao?: string | null;
+  status?: string | null; // ex.: "Cursando"
+  nota?: string | null; // conclusão/aprovação
+  lote?: string | null;
+  valorLote?: string | null;
+  valorTotal?: string | null;
+  formaPagamento?: string | null;
+  idResumo?: string | null;
+}
+
+/** `ensino_presenca_ensinos.json` — presença (nível ENCONTRO). */
+export interface ProverTeachingAttendance {
+  id: string;
+  idEncontro: string;
+  idEncontroReposicao?: string | null;
+  uuidPessoa: string;
+  presenca?: string | null;
+  saida?: string | null;
+  aproveitamento?: string | null;
+  idEventoInscricao?: string | null;
+  dataCheckIn?: string | null;
+  dataCheckOut?: string | null;
+}
+
 export interface ProverExportManifest {
   exportedAt: string;
   counts: { people: number };

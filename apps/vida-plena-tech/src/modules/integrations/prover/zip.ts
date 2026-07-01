@@ -15,6 +15,12 @@ import type {
   ProverEventSession,
   ProverEventRegistration,
   ProverEventAttendance,
+  ProverTeaching,
+  ProverTeachingModule,
+  ProverTeachingLesson,
+  ProverTeachingSession,
+  ProverTeachingRegistration,
+  ProverTeachingAttendance,
 } from "./types";
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -165,6 +171,27 @@ export function loadProverEventAttendances(filePath: string): { attendances: Pro
   const { records } = loadEntry<ProverEventAttendance>(filePath, "evento_presenca_eventos.json");
   return { attendances: records };
 }
+// ── Ensino / TD (Fase 6A) ──────────────────────────────────────────────────
+export function loadProverTeachings(filePath: string): { sourceFileHash: string; teachings: ProverTeaching[] } {
+  const { sourceFileHash, records } = loadEntry<ProverTeaching>(filePath, "ensino_ensinos.json");
+  return { sourceFileHash, teachings: records };
+}
+export function loadProverTeachingModules(filePath: string): { modules: ProverTeachingModule[] } {
+  return { modules: loadEntry<ProverTeachingModule>(filePath, "ensino_modulos.json").records };
+}
+export function loadProverTeachingLessons(filePath: string): { lessons: ProverTeachingLesson[] } {
+  return { lessons: loadEntry<ProverTeachingLesson>(filePath, "ensino_aulas.json").records };
+}
+export function loadProverTeachingSessions(filePath: string): { sessions: ProverTeachingSession[] } {
+  return { sessions: loadEntry<ProverTeachingSession>(filePath, "ensino_encontros_ensinos.json").records };
+}
+export function loadProverTeachingRegistrations(filePath: string): { registrations: ProverTeachingRegistration[] } {
+  return { registrations: loadEntry<ProverTeachingRegistration>(filePath, "ensino_inscritos_ensinos.json").records };
+}
+export function loadProverTeachingAttendances(filePath: string): { attendances: ProverTeachingAttendance[] } {
+  return { attendances: loadEntry<ProverTeachingAttendance>(filePath, "ensino_presenca_ensinos.json").records };
+}
+
 /** Conta linhas de um arquivo auxiliar (documentação; retorna 0 se ausente). */
 export function countProverEntry(filePath: string, entryName: string): number {
   try {

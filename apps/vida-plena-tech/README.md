@@ -519,6 +519,34 @@ sessão/pessoa; 2× → 0 duplicados). **Inscrição não encontrada → `SKIP`*
 obrigatório, `--limit` suportado. Auditoria `import_event_attendance_create`. **Nunca** altera
 `Event`/`EventSession`/`EventRegistration`/`Person`/status, nem cria User/Role/financeiro.
 
+### Ensino / TD — dry-run (Fase 6A)
+
+```bash
+pnpm prover:teaching:dry-run --file ./data/export_prover_2026-06-27.zip
+```
+
+Lê e entende os 6 arquivos de ensino **sem escrever nada real** (só `ImportBatch`/`ImportBatchItem`
++ relatório em `tmp/`). Modelo do Prover:
+
+| Arquivo | Papel | Chave / relação |
+|---|---|---|
+| `ensino_ensinos.json` | **Curso pai** | `uuid` (sem status) |
+| `ensino_modulos.json` | **Módulo** | `id` — **não referencia ensino**; liga-se via `encontros.idModulo` |
+| `ensino_aulas.json` | **Aula** | `id`, pai = `idModulo` |
+| `ensino_encontros_ensinos.json` | **Encontro (sessão realizada)** | `idEncontro`, amarra `uuidEnsino`+`idModulo`+`idAula`+data |
+| `ensino_inscritos_ensinos.json` | **Inscrição** (nível ensino) | `uuidEnsino`+`uuidPessoa`, com **`status`** ("Cursando") + **`nota`** + pagamento |
+| `ensino_presenca_ensinos.json` | **Presença** (nível encontro) | `idEncontro` + `idEventoInscricao`, `presenca` "1"/"0", `aproveitamento` |
+
+Resolve pessoa por `ExternalMapping(person)`; propõe as chaves externas `teaching`/`teaching_module`/
+`teaching_lesson`/`teaching_session`/`teaching_registration`/`teaching_attendance` (não cria mapping
+real). Detecta: `TEACHING_WITHOUT_TITLE/DATE`, `MODULE_WITHOUT_PARENT_TEACHING`, `LESSON_WITHOUT_MODULE`,
+`SESSION_WITHOUT_PARENT_TEACHING`, `PERSON_MAPPING_NOT_FOUND`, `REGISTRATION_DUPLICATE`,
+`ATTENDANCE_SESSION_NOT_FOUND`, `ATTENDANCE_WITHOUT_REGISTRATION`, `ATTENDANCE_DUPLICATE`. **Conclusão/
+aprovação** (`status`/`nota`/`aproveitamento`) é **detectada** e reportada; **pagamento/lote/financeiro**
+(campos + `ensino_regras_*`/`ensino_resumos_ensinos.json`) são **apenas documentados e ignorados**.
+**Não** cria dados de ensino, **não** altera `Person`/`User`/`Role`. Relatórios (fora do git):
+`teaching-dry-run-summary.json`, `teaching-dry-run-conflicts.csv`.
+
 ### Testes das funções puras + DB
 
 ```bash
