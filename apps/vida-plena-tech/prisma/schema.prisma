@@ -376,6 +376,7 @@ model Person {
   eventRegs       EventRegistration[]
   eventAttendances EventAttendance[]
   teachingRegs    TeachingRegistration[]
+  teachingAttendances TeachingAttendance[]
   leadershipMemberships LeadershipUnitMember[]
 
   // Vínculos familiares (dois lados da relação)
@@ -880,6 +881,17 @@ enum TeachingRegistrationStatus {
   UNKNOWN
 }
 
+enum TeachingAttendanceStatus {
+  PRESENT
+  ABSENT
+  UNKNOWN
+}
+
+enum TeachingAttendanceSource {
+  PROVER
+  MANUAL
+}
+
 model Teaching {
   id       String @id @default(cuid())
   tenantId String
@@ -901,6 +913,7 @@ model Teaching {
 
   sessions      TeachingSession[]
   registrations TeachingRegistration[]
+  attendances   TeachingAttendance[]
 
   @@index([tenantId])
   @@index([status])
@@ -971,6 +984,8 @@ model TeachingSession {
   module   TeachingModule? @relation(fields: [moduleId], references: [id])
   lesson   TeachingLesson? @relation(fields: [lessonId], references: [id])
 
+  attendances TeachingAttendance[]
+
   @@index([tenantId])
   @@index([teachingId])
   @@index([moduleId])
@@ -1002,11 +1017,48 @@ model TeachingRegistration {
   teaching Teaching @relation(fields: [teachingId], references: [id])
   person   Person   @relation(fields: [personId], references: [id])
 
+  attendances TeachingAttendance[]
+
   @@unique([teachingId, personId])
   @@index([tenantId])
   @@index([teachingId])
   @@index([personId])
   @@index([status])
+}
+
+model TeachingAttendance {
+  id       String @id @default(cuid())
+  tenantId String
+
+  teachingId             String
+  teachingSessionId      String
+  teachingRegistrationId String
+  personId               String
+
+  status TeachingAttendanceStatus
+  source TeachingAttendanceSource @default(PROVER)
+
+  checkedInAt  DateTime?
+  checkedOutAt DateTime?
+  exitMark     String?
+  score        Float?
+
+  sourceMark String?
+  metaJson   Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  teaching             Teaching             @relation(fields: [teachingId], references: [id])
+  teachingSession      TeachingSession      @relation(fields: [teachingSessionId], references: [id])
+  teachingRegistration TeachingRegistration @relation(fields: [teachingRegistrationId], references: [id])
+  person               Person               @relation(fields: [personId], references: [id])
+
+  @@index([tenantId])
+  @@index([teachingId])
+  @@index([teachingSessionId])
+  @@index([teachingRegistrationId])
+  @@index([personId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────

@@ -31,6 +31,7 @@
     "prover:teaching:dry-run": "tsx scripts/prover-teaching-dry-run.ts",
     "prover:teaching:apply": "tsx scripts/prover-teaching-apply.ts",
     "prover:teaching-registrations:apply": "tsx scripts/prover-teaching-registrations-apply.ts",
+    "prover:teaching-attendance:apply": "tsx scripts/prover-teaching-attendance-apply.ts",
     "prover:events:apply": "tsx scripts/prover-events-apply.ts",
     "prover:event-registrations:apply": "tsx scripts/prover-event-registrations-apply.ts",
     "prover:event-attendance:apply": "tsx scripts/prover-event-attendance-apply.ts",

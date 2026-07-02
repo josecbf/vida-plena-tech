@@ -42,6 +42,7 @@ import { runEventAttendanceApply, classifyRegistrationCount } from "../src/modul
 import { runTeachingDryRun } from "../src/modules/integrations/prover/teaching-dry-run";
 import { runTeachingApply } from "../src/modules/integrations/prover/teaching-apply";
 import { runTeachingRegistrationsApply } from "../src/modules/integrations/prover/teaching-registrations-apply";
+import { runTeachingAttendanceApply } from "../src/modules/integrations/prover/teaching-attendance-apply";
 import type { ProverTeaching, ProverTeachingModule, ProverTeachingLesson, ProverTeachingSession, ProverTeachingRegistration, ProverTeachingAttendance } from "../src/modules/integrations/prover/types";
 import type { ProverEvent, ProverEventSession, ProverEventRegistration, ProverEventAttendance } from "../src/modules/integrations/prover/types";
 import type { ProverGcMeeting, ProverGcMeetingAttendance } from "../src/modules/integrations/prover/types";
@@ -1647,6 +1648,121 @@ await (async () => {
   }
 })();
 
+// ── APPLY de PRESENÇAS de Ensino (Fase 6B.3) ──────────────────────────────
+await (async () => {
+  const prisma = new PrismaClient();
+  try {
+    const slug = "teachatt-test";
+    let t = await prisma.tenant.findUnique({ where: { slug } });
+    if (!t) t = await prisma.tenant.create({ data: { slug, name: "Teaching Att Test" } });
+    const tid = t.id;
+    await prisma.auditLog.deleteMany({ where: { tenantId: tid } });
+    await prisma.importBatchItem.deleteMany({ where: { tenantId: tid } });
+    await prisma.importBatch.deleteMany({ where: { tenantId: tid } });
+    await prisma.teachingAttendance.deleteMany({ where: { tenantId: tid } });
+    await prisma.teachingRegistration.deleteMany({ where: { tenantId: tid } });
+    await prisma.externalMapping.deleteMany({ where: { tenantId: tid } });
+    await prisma.teachingSession.deleteMany({ where: { tenantId: tid } });
+    await prisma.teachingLesson.deleteMany({ where: { tenantId: tid } });
+    await prisma.teachingModule.deleteMany({ where: { tenantId: tid } });
+    await prisma.teaching.deleteMany({ where: { tenantId: tid } });
+    await prisma.person.deleteMany({ where: { tenantId: tid } });
+
+    const mkP = async (uuid: string, status: "VISITOR" | "MEMBER" = "VISITOR") => {
+      const p = await prisma.person.create({ data: { tenantId: tid, fullName: uuid, status } });
+      await prisma.externalMapping.create({ data: { tenantId: tid, system: "PROVER", externalType: "person", externalId: uuid, internalType: "Person", internalId: p.id } });
+      return p;
+    };
+    const teach = await prisma.teaching.create({ data: { tenantId: tid, title: "TD att", status: "FINISHED", startsAt: new Date("2023-01-01") } });
+    await prisma.externalMapping.create({ data: { tenantId: tid, system: "PROVER", externalType: "teaching", externalId: "uuid-TA", internalType: "Teaching", internalId: teach.id } });
+    const mkS = async (extId: string) => {
+      const s = await prisma.teachingSession.create({ data: { tenantId: tid, teachingId: teach.id, startsAt: new Date("2023-01-02") } });
+      await prisma.externalMapping.create({ data: { tenantId: tid, system: "PROVER", externalType: "teaching_session", externalId: extId, internalType: "TeachingSession", internalId: s.id } });
+      return s;
+    };
+    const s1 = await mkS("enc-1"); const s2 = await mkS("enc-2"); const s3 = await mkS("enc-3"); const s4 = await mkS("enc-4");
+    // pessoas: pP (present), pA (absent), pU (unknown/null), pD (dup), pReg (sem inscrição), pNoP (sem person mapping)
+    const pP = await mkP("uuid-P"); const pA = await mkP("uuid-A"); const pU = await mkP("uuid-U"); const pD = await mkP("uuid-DD"); const pNoReg = await mkP("uuid-NR");
+    const mkReg = async (person: { id: string }) => prisma.teachingRegistration.create({ data: { tenantId: tid, teachingId: teach.id, personId: person.id, status: "IN_PROGRESS", source: "PROVER" } });
+    await mkReg(pP); await mkReg(pA); await mkReg(pU); await mkReg(pD); // pNoReg NÃO tem inscrição
+
+    const attendances: ProverTeachingAttendance[] = [
+      { id: "att-1", idEncontro: "enc-1", uuidPessoa: "uuid-P", presenca: "1", dataCheckIn: "2023-01-02 09:00:00", dataCheckOut: "2023-01-02 11:00:00", saida: "11:00", aproveitamento: "8.5", idEventoInscricao: "R1" }, // PRESENT + score
+      { id: "att-2", idEncontro: "enc-1", uuidPessoa: "uuid-A", presenca: "0", idEventoInscricao: "R2" }, // ABSENT
+      { id: "att-3", idEncontro: "enc-1", uuidPessoa: "uuid-U", presenca: null, idEventoInscricao: "R3" }, // UNKNOWN
+      { id: "att-4", idEncontro: "enc-NONE", uuidPessoa: "uuid-P", presenca: "1" }, // sessão não resolvida
+      { id: "att-5", idEncontro: "enc-2", uuidPessoa: "uuid-UNKNOWN", presenca: "1" }, // pessoa não resolvida
+      { id: "att-6", idEncontro: "enc-2", uuidPessoa: "uuid-NR", presenca: "1", idEventoInscricao: "R6" }, // inscrição não encontrada
+      { id: "att-7", idEncontro: "enc-3", uuidPessoa: "uuid-DD", presenca: "1", idEventoInscricao: "R7a" }, // dup simples
+      { id: "att-8", idEncontro: "enc-3", uuidPessoa: "uuid-DD", presenca: "1", idEventoInscricao: "R7b" }, // dup simples (id/insc distintos, presenca igual)
+      { id: "att-9", idEncontro: "enc-4", uuidPessoa: "uuid-DD", presenca: "1", idEventoInscricao: "R8a" }, // dup conflitante
+      { id: "att-10", idEncontro: "enc-4", uuidPessoa: "uuid-DD", presenca: "0", idEventoInscricao: "R8b" }, // dup conflitante (presenca divergente)
+    ];
+
+    const before = {
+      att: await prisma.teachingAttendance.count({ where: { tenantId: tid } }),
+      teaching: await prisma.teaching.count({ where: { tenantId: tid } }),
+      session: await prisma.teachingSession.count({ where: { tenantId: tid } }),
+      reg: await prisma.teachingRegistration.count({ where: { tenantId: tid } }),
+      regStatuses: Object.fromEntries((await prisma.teachingRegistration.findMany({ where: { tenantId: tid }, select: { id: true, status: true } })).map((x) => [x.id, x.status])),
+      person: await prisma.person.count({ where: { tenantId: tid } }),
+      member: await prisma.person.count({ where: { tenantId: tid, status: "MEMBER" } }),
+      user: await prisma.user.count(), role: await prisma.roleAssignment.count(),
+      statuses: Object.fromEntries((await prisma.person.findMany({ where: { tenantId: tid }, select: { id: true, status: true } })).map((p) => [p.id, p.status])),
+    };
+
+    const r = await runTeachingAttendanceApply(prisma, { tenantId: tid, fileName: "test", attendances });
+
+    const attP = await prisma.teachingAttendance.findFirst({ where: { tenantId: tid, teachingSessionId: s1.id, personId: pP.id } });
+    const attA = await prisma.teachingAttendance.findFirst({ where: { tenantId: tid, teachingSessionId: s1.id, personId: pA.id } });
+    const attU = await prisma.teachingAttendance.findFirst({ where: { tenantId: tid, teachingSessionId: s1.id, personId: pU.id } });
+    const mapP = await prisma.externalMapping.findFirst({ where: { tenantId: tid, externalType: "teaching_attendance", externalId: "enc-1:uuid-P" } });
+
+    check("TA1. cria presença PRESENT", attP?.status === "PRESENT" && attP?.source === "PROVER" && r.present === 7);
+    check("TA2. cria presença ABSENT", attA?.status === "ABSENT" && r.absent === 2);
+    check("TA3. trata presenca null como UNKNOWN (cria)", attU?.status === "UNKNOWN" && r.unknown === 1);
+    check("TA4. resolve TeachingSession por mapping", attP?.teachingSessionId === s1.id && r.sessionNotFound === 1);
+    check("TA5. resolve Person por mapping", attP?.personId === pP.id && r.personNotFound === 1);
+    check("TA6. resolve TeachingRegistration por teaching+person", !!attP?.teachingRegistrationId && attP?.teachingId === teach.id && r.registrationResolved === 4);
+    check("TA7. pula TeachingRegistration não encontrada", r.registrationNotFound === 1 && (await prisma.teachingAttendance.count({ where: { tenantId: tid, personId: pNoReg.id } })) === 0);
+    check("TA8. pula TeachingSession não resolvida", r.sessionNotFound === 1);
+    check("TA9. pula Person não resolvida", r.personNotFound === 1);
+    check("TA10. duplicidade simples não duplica", r.duplicateSimple === 1 && (await prisma.teachingAttendance.count({ where: { tenantId: tid, teachingSessionId: s3.id, personId: pD.id } })) === 1);
+    check("TA11. duplicidade conflitante vira SKIP", r.duplicateConflict === 2 && (await prisma.teachingAttendance.count({ where: { tenantId: tid, teachingSessionId: s4.id, personId: pD.id } })) === 0);
+    check("TA12. cria ExternalMapping(teaching_attendance)", mapP?.internalId === attP?.id);
+    check("TA14. preserva dataCheckIn/dataCheckOut", !!attP?.checkedInAt && !!attP?.checkedOutAt);
+    check("TA15. preserva saida em exitMark", attP?.exitMark === "11:00");
+    check("TA16. preserva aproveitamento como score", attP?.score === 8.5 && r.scoreDetected === 1 && r.scorePreserved === 1);
+
+    const after = {
+      att: await prisma.teachingAttendance.count({ where: { tenantId: tid } }),
+      teaching: await prisma.teaching.count({ where: { tenantId: tid } }),
+      session: await prisma.teachingSession.count({ where: { tenantId: tid } }),
+      reg: await prisma.teachingRegistration.count({ where: { tenantId: tid } }),
+      regStatuses: Object.fromEntries((await prisma.teachingRegistration.findMany({ where: { tenantId: tid }, select: { id: true, status: true } })).map((x) => [x.id, x.status])),
+      person: await prisma.person.count({ where: { tenantId: tid } }),
+      member: await prisma.person.count({ where: { tenantId: tid, status: "MEMBER" } }),
+      user: await prisma.user.count(), role: await prisma.roleAssignment.count(),
+      statuses: Object.fromEntries((await prisma.person.findMany({ where: { tenantId: tid }, select: { id: true, status: true } })).map((p) => [p.id, p.status])),
+    };
+    check("TA17. NÃO altera Teaching", after.teaching === before.teaching);
+    check("TA18. NÃO altera TeachingSession", after.session === before.session);
+    check("TA19. NÃO altera TeachingRegistration", after.reg === before.reg && JSON.stringify(after.regStatuses) === JSON.stringify(before.regStatuses));
+    check("TA20. NÃO altera Person/status eclesiástico", after.person === before.person && after.member === before.member && JSON.stringify(after.statuses) === JSON.stringify(before.statuses));
+    check("TA21. NÃO cria User", after.user === before.user);
+    check("TA22. NÃO cria RoleAssignment", after.role === before.role);
+
+    // TA13: idempotência
+    const r2 = await runTeachingAttendanceApply(prisma, { tenantId: tid, fileName: "test", attendances });
+    const fin = { att: await prisma.teachingAttendance.count({ where: { tenantId: tid } }), map: await prisma.externalMapping.count({ where: { tenantId: tid, externalType: "teaching_attendance" } }) };
+    check("TA13. apply 2x não duplica presença", r2.created === 0 && fin.att === after.att && fin.map === r.created);
+  } catch (e) {
+    console.log(`  ⚠ TA. (skip) DB indisponível: ${e instanceof Error ? e.message : e}`);
+  } finally {
+    await prisma.$disconnect();
+  }
+})();
+
 // ── DRY-RUN de ENSINO/TD (Fase 6A) ────────────────────────────────────────
 await (async () => {
   const prisma = new PrismaClient();
@@ -2403,6 +2519,12 @@ try {
   check("C13. teaching-registrations:apply SEM --confirm falha (exit 2)", res.status === 2, `exit=${res.status}`);
 } catch {
   console.log("  ⚠ C13. (skip) não foi possível spawnar o CLI");
+}
+try {
+  const res = spawnSync("pnpm", ["prover:teaching-attendance:apply", "--file", "./data/sample/x.zip"], { encoding: "utf8", timeout: 60000 });
+  check("C14. teaching-attendance:apply SEM --confirm falha (exit 2)", res.status === 2, `exit=${res.status}`);
+} catch {
+  console.log("  ⚠ C14. (skip) não foi possível spawnar o CLI");
 }
 
 console.log(`\nResultado: ${passed} passou, ${failed} falhou.\n`);
